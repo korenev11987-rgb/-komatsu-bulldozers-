@@ -35,6 +35,6 @@ export type RepairCard = Record<SectionKey, RepairSection>;
 
 export type RepairBook = Partial<Record<NodeId, Partial<RepairCard>>>;
 
-export type RepairLibrary = Record<ModelId, RepairBook>;
+export type RepairLibrary = Partial<Record<ModelId, RepairBook>>;
 
 export const NOT_FOUND: RepairSection = { status: 'not-found' };

@@ -29,7 +29,7 @@ export type NodeId =
   | 'lights'
   | 'monitor';
 
-export type ModelId = 'D155' | 'D355' | 'D475';
+export type ModelId = 'D155' | 'D275A-2' | 'D275A-5' | 'D355' | 'D375A-3' | 'D375A-5' | 'D375A-6' | 'D375A-8' | 'D475';
 
 export interface SystemInfo {
   id: SystemId;
@@ -153,6 +153,8 @@ export interface BulldozerModel {
   id: ModelId;
   name: string;
   fullName: string;
+  /** Серия для группировки в переключателе (D155, D275, …) */
+  series?: string;
   tagline: string;
   specs: SpecItem[];
   layout: LayoutParams;
