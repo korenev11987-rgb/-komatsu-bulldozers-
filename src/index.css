@@ -1,0 +1,224 @@
+:root {
+  --bg: #f4f5f7;
+  --surface: #ffffff;
+  --text: #212529;
+  --muted: #6c757d;
+  --border: #dee2e6;
+  --komatsu: #f2b705;
+  --radius: 12px;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+  line-height: 1.45;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; }
+button { font: inherit; color: inherit; }
+
+.app { max-width: 1400px; margin: 0 auto; padding: 20px 20px 32px; }
+.app__header h1 { margin: 0 0 4px; font-size: clamp(1.3rem, 2.5vw, 1.9rem); }
+.app__header p { margin: 0 0 16px; color: var(--muted); }
+.app__footer { margin-top: 24px; font-size: 0.8rem; color: var(--muted); }
+
+/* ---------- Переключатель моделей ---------- */
+.model-switcher { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 14px; }
+.model-tab {
+  text-align: left; cursor: pointer; padding: 12px 14px;
+  background: var(--surface); border: 2px solid var(--border); border-radius: var(--radius);
+  transition: border-color .15s, box-shadow .15s, transform .15s;
+}
+.model-tab:hover { border-color: #adb5bd; transform: translateY(-1px); }
+.model-tab:focus-visible { outline: 3px solid #339af0; outline-offset: 2px; }
+.model-tab.is-active { border-color: var(--komatsu); box-shadow: 0 0 0 3px rgba(242, 183, 5, .3); }
+.model-tab__name { display: block; font-size: 1.4rem; font-weight: 800; }
+.model-tab__full { display: block; font-size: .85rem; color: var(--muted); margin-bottom: 6px; }
+.model-tab__specs { margin: 0; display: grid; gap: 2px; font-size: .8rem; }
+.model-tab__specs div { display: flex; gap: 6px; }
+.model-tab__specs dt { color: var(--muted); min-width: 92px; }
+.model-tab__specs dd { margin: 0; }
+
+/* ---------- Легенда ---------- */
+.legend { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; align-items: stretch; }
+.legend__item {
+  display: grid; grid-template-columns: auto 1fr; column-gap: 8px; align-items: center;
+  text-align: left; cursor: pointer; padding: 8px 12px; min-width: 170px; flex: 1 1 170px;
+  background: var(--surface); border: 2px solid var(--border); border-radius: 10px;
+  transition: opacity .15s, border-color .15s;
+}
+.legend__item:hover { border-color: var(--c); }
+.legend__item:focus-visible { outline: 3px solid var(--c); outline-offset: 2px; }
+.legend__item.is-active { border-color: var(--c); background: color-mix(in srgb, var(--c) 10%, white); }
+.legend__item.is-dimmed { opacity: .55; }
+.legend__swatch { grid-row: span 2; width: 16px; height: 16px; border-radius: 4px; background: var(--c); }
+.legend__name { font-weight: 700; }
+.legend__sub { font-size: .75rem; color: var(--muted); }
+.legend__reset {
+  padding: 8px 14px; border-radius: 10px; border: 2px solid var(--border); background: var(--surface); cursor: pointer;
+}
+.legend__reset:disabled { opacity: .45; cursor: default; }
+
+/* ---------- Основная раскладка ---------- */
+.app__main { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; align-items: start; }
+.app__schema { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px; }
+
+/* ---------- Схема ---------- */
+.schema { margin: 0; }
+.schema__svg { width: 100%; height: auto; display: block; border-radius: 8px; }
+.schema__caption { font-size: .8rem; color: var(--muted); padding: 4px 8px 6px; }
+
+.decor { pointer-events: none; }
+.decor__brand { font: 900 15px/1 system-ui, sans-serif; letter-spacing: 3px; fill: #111; }
+.decor__model { font: 800 12px/1 system-ui, sans-serif; letter-spacing: 1px; fill: #1a1a1a; text-anchor: middle; }
+.decor__tiny { font: 600 8px/1 system-ui, sans-serif; }
+.decor__micro { font: 600 6px/1 system-ui, sans-serif; fill: #ced4da; }
+
+/* Узлы */
+.node { cursor: pointer; outline: none; transition: opacity .2s; }
+.node__art { transition: filter .15s; }
+.node__hit { fill: transparent; stroke: transparent; stroke-width: 2; pointer-events: all; transition: fill .15s, stroke .15s; }
+.node__hit--stroke { fill: none; pointer-events: stroke; stroke: transparent; }
+/* «Рентген» внутренних узлов: всегда виден тонированным в цвет системы */
+.xr-fill { fill: color-mix(in srgb, var(--c) 30%, transparent); stroke: color-mix(in srgb, var(--c) 85%, white); stroke-width: 1.4; stroke-dasharray: 4 2; }
+.xr-solid { fill: color-mix(in srgb, var(--c) 55%, #111); stroke-dasharray: none; }
+.xr-line { fill: none; stroke: color-mix(in srgb, var(--c) 70%, white); stroke-width: 1.4; }
+.wire { stroke: var(--c); }
+.wire-fill { fill: var(--c); }
+.beam { pointer-events: none; }
+
+.node.is-hovered .node__art { filter: drop-shadow(0 0 5px var(--c)) brightness(1.15); }
+.node.is-hovered .node__hit { fill: color-mix(in srgb, var(--c) 22%, transparent); stroke: var(--c); stroke-width: 2.5; }
+.node.is-hovered .node__hit--stroke { fill: none; stroke: color-mix(in srgb, var(--c) 45%, transparent); }
+.node.is-hovered .xr-fill { fill: color-mix(in srgb, var(--c) 50%, transparent); }
+.node.is-selected .node__art { filter: drop-shadow(0 0 8px var(--c)) drop-shadow(0 0 2px #fff) brightness(1.2); }
+.node.is-selected .node__hit { fill: color-mix(in srgb, var(--c) 35%, transparent); stroke: #fff; stroke-width: 2.5; }
+.node.is-selected .node__hit--stroke { fill: none; stroke: color-mix(in srgb, var(--c) 60%, transparent); }
+.node.is-selected .xr-fill { fill: color-mix(in srgb, var(--c) 65%, transparent); stroke: #fff; }
+.node:focus-visible .node__hit { stroke: #339af0; stroke-width: 3; stroke-dasharray: 6 3; }
+.node.is-dimmed { opacity: .22; }
+
+/* Подписи-выноски */
+.callout { cursor: pointer; transition: opacity .2s; }
+.callout__leader { fill: none; stroke: color-mix(in srgb, var(--c, #495057) 70%, #343a40); stroke-width: 1; opacity: .55; pointer-events: none; }
+.callout__dot { fill: var(--c, #495057); stroke: #fff; stroke-width: 1.2; pointer-events: none; }
+.callout__pill { fill: rgba(255, 255, 255, .94); stroke: color-mix(in srgb, var(--c, #adb5bd) 70%, white); stroke-width: 1.2; filter: drop-shadow(0 1px 1.5px rgba(0,0,0,.18)); }
+.callout__swatch { fill: var(--c); }
+.callout__text { font: 600 12px/1 system-ui, sans-serif; fill: #212529; pointer-events: none; }
+.callout--passive { cursor: default; }
+.callout--passive .callout__pill { fill: rgba(241, 243, 245, .85); stroke: #ced4da; }
+.callout--passive .callout__text { font-size: 11px; font-weight: 500; fill: #6c757d; font-style: italic; }
+.callout--passive .callout__dot { fill: #868e96; }
+.callout.is-hovered .callout__pill { fill: color-mix(in srgb, var(--c) 18%, white); stroke: var(--c); stroke-width: 2; }
+.callout.is-hovered .callout__leader, .callout.is-selected .callout__leader { opacity: 1; stroke: var(--c); stroke-width: 1.8; }
+.callout.is-selected .callout__pill { fill: var(--c); stroke: #212529; }
+.callout.is-selected .callout__text { fill: #fff; }
+.callout.is-selected .callout__swatch { fill: #fff; }
+.callout.is-dimmed { opacity: .2; }
+
+/* ---------- Панель деталей ---------- */
+.panel {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 16px 18px; position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow: auto;
+  border-top: 6px solid var(--c, var(--komatsu));
+}
+.panel__head { display: flex; justify-content: space-between; align-items: center; }
+.panel__badge {
+  background: var(--c); color: #fff; font-size: .75rem; font-weight: 700;
+  padding: 3px 10px; border-radius: 999px; text-transform: uppercase; letter-spacing: .04em;
+}
+.panel__close {
+  width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--border);
+  background: #f8f9fa; cursor: pointer; font-size: 1.3rem; line-height: 1;
+}
+.panel__close:hover { background: #e9ecef; }
+.panel__close:focus-visible { outline: 3px solid #339af0; }
+.panel__title { margin: 10px 0 2px; font-size: 1.25rem; }
+.panel__model, .panel__tagline { margin: 0 0 10px; color: var(--muted); font-size: .9rem; }
+.panel__desc { margin: 0 0 10px; }
+.panel__note {
+  margin: 0 0 12px; padding: 8px 10px; border-left: 4px solid var(--c);
+  background: color-mix(in srgb, var(--c) 8%, white); font-size: .9rem;
+}
+.panel__subtitle { margin: 12px 0 6px; font-size: 1rem; }
+.panel__specs { margin: 0 0 12px; display: grid; gap: 6px; }
+.panel__specs div { display: grid; grid-template-columns: 150px 1fr; gap: 8px; }
+.panel__specs dt { color: var(--muted); }
+.panel__specs dd { margin: 0; font-weight: 600; }
+.panel__hint { padding: 10px; background: #fff9db; border-radius: 8px; }
+.panel__disclaimer { font-size: .75rem; color: var(--muted); margin: 12px 0 0; }
+
+.parts { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.parts__item { padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; display: grid; gap: 2px; }
+.parts__name { font-weight: 600; }
+.parts__note { font-size: .85rem; color: var(--muted); }
+
+/* ---------- Адаптивность ---------- */
+@media (max-width: 1000px) {
+  .app__main { grid-template-columns: 1fr; }
+  .panel { position: static; max-height: none; }
+}
+@media (max-width: 640px) {
+  .app { padding: 12px; }
+  .model-switcher { grid-template-columns: 1fr; }
+  .legend__item { min-width: 100%; }
+  .panel__specs div { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}
+
+/* ---- Жёлтая версия: разрезы и подписи ---- */
+.cutaway { fill: rgba(16, 20, 26, 0.82); stroke: #3a2a00; stroke-width: 1.5; stroke-dasharray: 6 4; }
+.cutaway__label { font: 700 9px/1 system-ui, sans-serif; fill: #ffe066; letter-spacing: 1px; text-transform: uppercase; pointer-events: none; }
+.decor__micro--dark { fill: #3a2a00; font-weight: 800; }
+.scalebar text { font: 700 11px/1 system-ui, sans-serif; fill: #212529; }
+
+/* ---- Анимация работы ---- */
+.fx { pointer-events: none; }
+.hyd-flow { fill: none; stroke: #2fbf71; stroke-width: 4; stroke-linecap: round; stroke-dasharray: 8 9; filter: drop-shadow(0 0 3px #2fbf71); }
+.wire-flow { stroke: #fff3a0; filter: drop-shadow(0 0 3px #ffd43b); pointer-events: none; }
+.node.is-anim .node__art { animation: anim-glow 1.1s ease-in-out infinite alternate; }
+@keyframes anim-glow {
+  from { filter: drop-shadow(0 0 2px var(--c)) brightness(1.05); }
+  to { filter: drop-shadow(0 0 9px var(--c)) drop-shadow(0 0 3px #fff) brightness(1.25); }
+}
+.vib--crank { animation: vib 0.09s linear infinite; }
+.vib--run { animation: vib 0.14s linear infinite; }
+.machine.vib--run { animation-name: vib-s; }
+@keyframes vib { 0% { transform: translate(0, 0); } 25% { transform: translate(0.8px, -0.7px); } 50% { transform: translate(-0.6px, 0.5px); } 75% { transform: translate(0.5px, 0.8px); } 100% { transform: translate(0, 0); } }
+@keyframes vib-s { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(0.35px, -0.35px); } }
+
+.anim { margin-top: 12px; background: #fff; border: 1px solid #dee2e6; border-radius: 12px; padding: 12px 14px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+.anim__head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.anim__title { margin: 0; font-size: 1.05rem; }
+.anim__controls { display: flex; gap: 6px; flex-wrap: wrap; }
+.anim__btn { min-width: 36px; height: 34px; border: 1px solid #ced4da; background: #f8f9fa; border-radius: 8px; cursor: pointer; font: inherit; font-size: 0.85rem; color: #212529; }
+.anim__btn:hover:not(:disabled) { background: #fff3bf; border-color: #f2b705; }
+.anim__btn:focus-visible, .anim__step:focus-visible, .anim__chip:focus-visible { outline: 3px solid #1c7ed6; outline-offset: 2px; }
+.anim__btn--main { background: #f2b705; border-color: #c99700; font-weight: 700; min-width: 44px; }
+.anim__btn--text { padding: 0 12px; }
+.anim__btn.is-on { background: #212529; color: #ffd43b; border-color: #212529; }
+.anim__btn:disabled { opacity: .45; cursor: default; }
+.anim__steps { list-style: none; display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 8px; padding: 0; }
+.anim__step { display: flex; align-items: center; gap: 7px; padding: 6px 12px 6px 6px; border-radius: 999px; border: 1px solid #ced4da; background: #fff; cursor: pointer; font: inherit; font-size: 0.88rem; color: #212529; }
+.anim__step:hover { border-color: #f2b705; }
+.anim__num { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: #e9ecef; font-weight: 700; font-size: 0.78rem; }
+.anim__step.is-done .anim__num { background: #ffe066; }
+.anim__step.is-active { background: #212529; color: #fff; border-color: #212529; }
+.anim__step.is-active .anim__num { background: #f2b705; color: #111; }
+.anim__progress { height: 5px; background: #e9ecef; border-radius: 3px; overflow: hidden; }
+.anim__progress span { display: block; height: 100%; background: linear-gradient(90deg, #f2b705, #e8590c); }
+.anim__phase { margin: 10px 0 4px; font-size: 0.95rem; }
+.anim__caption { margin: 0 0 8px; color: #495057; font-size: 0.88rem; line-height: 1.45; }
+.anim__hint { margin: 10px 0 0; color: #495057; font-size: 0.88rem; }
+.anim__nodes { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.anim__nodes-label { font-size: 0.8rem; color: #868e96; }
+.anim__chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; border: 1px solid #dee2e6; background: #f8f9fa; cursor: pointer; font: inherit; font-size: 0.8rem; color: #212529; }
+.anim__chip i { width: 9px; height: 9px; border-radius: 50%; background: var(--c); }
+.anim__chip.is-active { border-color: var(--c); background: color-mix(in srgb, var(--c) 18%, #fff); font-weight: 600; }
+
+@media (prefers-reduced-motion: reduce) {
+  .vib--crank, .vib--run, .machine.vib--run { animation: none; }
+  .node.is-anim .node__art { animation: none; filter: drop-shadow(0 0 7px var(--c)) brightness(1.2); }
+  .node__art { transition: none; }
+}

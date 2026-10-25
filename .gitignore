@@ -1,0 +1,8 @@
+node_modules
+dist
+*.tsbuildinfo
+# локальное состояние старых публикаций (не используется)
+.netlify
+# системные файлы
+.DS_Store
+*.log
