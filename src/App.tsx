@@ -41,6 +41,21 @@ export default function App() {
   }, []);
   const handleClose = useCallback(() => setSelectedId(null), []);
 
+  // Клик вне карточки (по пустому месту схемы, фону страницы или затемнению) закрывает её.
+  // Клик по другому узлу или подписи переключает карточку; переключатели моделей, легенда и
+  // панель анимации карточку не закрывают (можно сравнивать один узел на разных моделях).
+  useEffect(() => {
+    if (!selectedId) return;
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as Element | null;
+      if (!t || !(t instanceof Element)) return;
+      if (t.closest('.panel, [data-node], .callout:not(.callout--passive), .model-switcher, .legend, .anim')) return;
+      setSelectedId(null);
+    };
+    document.addEventListener('pointerdown', onDown);
+    return () => document.removeEventListener('pointerdown', onDown);
+  }, [selectedId]);
+
   const handleSystem = useCallback(
     (id: SystemId | null) => {
       setActiveSystem(id);
@@ -71,6 +86,7 @@ export default function App() {
           />
           <AnimationPanel anim={anim} frame={frame} model={model} onSelectNode={setSelectedId} />
         </section>
+        {node && <div className="panel-backdrop" aria-hidden="true" />}
         <NodeDetailsPanel model={model} node={node} onClose={handleClose} />
       </main>
 

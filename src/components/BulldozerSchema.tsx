@@ -37,6 +37,26 @@ function HitShape({ s }: { s: Shape }) {
   }
 }
 
+/** Приблизительная площадь области клика узла (для порядка наложения) */
+function hitArea(shapes: Shape[]): number {
+  let a = 0;
+  for (const s of shapes) {
+    if (s.kind === 'rect') a += s.w * s.h;
+    else if (s.kind === 'circle') a += Math.PI * s.r * s.r;
+    else if (s.kind === 'line') a += Math.hypot(s.x2 - s.x1, s.y2 - s.y1) * s.width;
+    else if (s.kind === 'polygon') {
+      const p = s.points.trim().split(/[\s,]+/).map(Number);
+      let sum = 0;
+      for (let i = 0; i < p.length; i += 2) {
+        const j = (i + 2) % p.length;
+        sum += p[i] * p[j + 1] - p[j] * p[i + 1];
+      }
+      a += Math.abs(sum) / 2;
+    } else a += s.width ? 4000 : 20000; // путь: грубая оценка (жгуты — тонкие, но длинные)
+  }
+  return a;
+}
+
 const rotPt = (x: number, y: number, r: Geometry['bladeRot']) => {
   const rad = (r.a * Math.PI) / 180;
   const dx = x - r.cx;
@@ -86,6 +106,15 @@ export function BulldozerSchema({ model, selectedId, activeSystem, onSelect, ani
   };
 
   const nodeById = new Map(nodes.map((n) => [n.id, n]));
+  const bladeTf = `rotate(${geo.bladeRot.a} ${geo.bladeRot.cx} ${geo.bladeRot.cy})`;
+  const nodeClass = (n: (typeof nodes)[number]) => {
+    const dimmed = activeSystem !== null && activeSystem !== n.system;
+    return ['node', `node--${n.system}`, `node--${n.id}`, n.xray && 'node--xray', n.id === selectedId && 'is-selected', n.id === hoverId && 'is-hovered', dimmed && 'is-dimmed', highlight.has(n.id) && 'is-anim']
+      .filter(Boolean)
+      .join(' ');
+  };
+  // Порядок областей клика: по убыванию площади (мелкие узлы оказываются сверху)
+  const hitOrder = [...nodes].sort((a, b) => hitArea(b.shapes) - hitArea(a.shapes));
 
   return (
     <figure className="schema">
@@ -102,25 +131,36 @@ export function BulldozerSchema({ model, selectedId, activeSystem, onSelect, ani
         <g className={['machine', anim?.engine === 'crank' && 'vib vib--crank', anim?.engine === 'run' && anim.rpm > 0.6 && 'vib vib--run'].filter(Boolean).join(' ')}>
           <FarSide geo={geo} />
           <Body geo={geo} />
-          {nodes.map((n) => {
+          {/* Проход 1: рисунок узлов в исходном порядке. Клики не перехватывает (pointer-events: none) */}
+          {nodes.map((n) => (
+            <g key={n.id} className={`${nodeClass(n)} node--art`} data-node-art={n.id} style={{ ['--c' as string]: SYSTEMS[n.system].color }} aria-hidden="true">
+              <g transform={n.id === 'blade' ? bladeTf : undefined}>
+                <g className="node__art">
+                  <NodeArt id={n.id} geo={geo} anim={anim} />
+                </g>
+              </g>
+            </g>
+          ))}
+          {/* Проход 2: области клика поверх всех рисунков; крупные узлы снизу, мелкие сверху —
+              так мелкий узел не перекрывается соседним крупным (раньше рисунок одного узла мог закрыть другой) */}
+          {hitOrder.map((n) => {
             const selected = n.id === selectedId;
-            const hovered = n.id === hoverId;
             const dimmed = activeSystem !== null && activeSystem !== n.system;
             const info = model.nodes[n.id];
-            const cls = ['node', `node--${n.system}`, `node--${n.id}`, n.xray && 'node--xray', selected && 'is-selected', hovered && 'is-hovered', dimmed && 'is-dimmed', highlight.has(n.id) && 'is-anim']
-              .filter(Boolean)
-              .join(' ');
             return (
               <g
                 key={n.id}
-                className={cls}
+                className={`${nodeClass(n)} node--hitlayer`}
                 data-node={n.id}
                 style={{ ['--c' as string]: SYSTEMS[n.system].color }}
                 role="button"
                 tabIndex={dimmed ? -1 : 0}
-                aria-label={`${info.title} — система «${SYSTEMS[n.system].name}»`}
+                aria-label={`${info.title} — система «${SYSTEMS[n.system].name}». Открыть карточку узла`}
                 aria-pressed={selected}
-                onClick={() => onSelect(n.id)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelect(n.id);
+                }}
                 onKeyDown={(e) => onKey(e, n.id)}
                 onMouseEnter={() => setHoverId(n.id)}
                 onMouseLeave={() => setHoverId(null)}
@@ -128,10 +168,7 @@ export function BulldozerSchema({ model, selectedId, activeSystem, onSelect, ani
                 onBlur={() => setHoverId(null)}
               >
                 <title>{info.title}</title>
-                <g transform={n.id === 'blade' ? `rotate(${geo.bladeRot.a} ${geo.bladeRot.cx} ${geo.bladeRot.cy})` : undefined}>
-                  <g className="node__art">
-                    <NodeArt id={n.id} geo={geo} anim={anim} />
-                  </g>
+                <g transform={n.id === 'blade' ? bladeTf : undefined}>
                   {n.shapes.map((sh, k) => (
                     <HitShape key={k} s={sh} />
                   ))}
@@ -172,7 +209,7 @@ export function BulldozerSchema({ model, selectedId, activeSystem, onSelect, ani
                 key={c.key}
                 className={cls}
                 style={c.color ? { ['--c' as string]: c.color } : undefined}
-                onClick={id ? () => onSelect(id) : undefined}
+                onClick={id ? (e) => { e.stopPropagation(); onSelect(id); } : undefined}
                 onMouseEnter={id ? () => setHoverId(id) : undefined}
                 onMouseLeave={id ? () => setHoverId(null) : undefined}
               >
