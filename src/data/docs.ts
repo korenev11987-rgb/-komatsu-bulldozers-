@@ -17,6 +17,16 @@ export interface ModelDocument {
 export const MODEL_DOCS: Partial<Record<ModelId, ModelDocument[]>> = {
   D155: [
     {
+      id: 'd155a-5-srbm028200-ru',
+      label: 'Заводская инструкция D155A-5 (RU, полная, 703 стр., 16,6 МБ)',
+      file: 'manuals/komatsu-d155a-5-srbm028200-ru.pdf',
+      docNo: 'SRBM028200',
+      model: 'Заводская инструкция (Shop Manual) Komatsu D155A-5, серийный № 65001 и выше',
+      sourceUrl: '',
+      sourceLabel: 'файл, предоставленный владельцем сайта',
+      note: 'Полный русский Shop Manual D155A-5 (скан). Карточки узлов D155 ссылаются на его страницы. D155A-5 — более раннее поколение, чем D155AX-8 на схеме: значения относятся к D155A-5.',
+    },
+    {
       id: 'd155a-5-sebm023301',
       label: 'Мануал D155A-5 (PDF, фрагмент: раздел 01 «Общее», 31 стр.)',
       file: 'manuals/komatsu-d155a-5-sebm023301-excerpt.pdf',

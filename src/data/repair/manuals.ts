@@ -5,6 +5,15 @@ import type { ManualDoc } from './types';
  * Все документы прочитаны в открытом доступе (без входа и без обхода платного доступа).
  */
 export const MANUALS: Record<string, ManualDoc> = {
+  'D155-SM-RU': {
+    id: 'D155-SM-RU',
+    title: 'Заводская инструкция D155A-5',
+    model: 'D155A-5, серийный № 65001 и выше (на схеме — D155AX-8)',
+    docNo: 'SRBM028200',
+    url: 'manuals/komatsu-d155a-5-srbm028200-ru.pdf',
+    file: 'manuals/komatsu-d155a-5-srbm028200-ru.pdf',
+    note: 'Русское издание Shop Manual, 703 стр. Скан без текстового слоя — текст распознан (OCR), цифры сверены по изображениям страниц. Двигатель S6D140-1 подробно описан в отдельном мануале двигателя 6D140-1 (в этой инструкции — только снятие/установка, головка блока и стандартные значения).',
+  },
   'D155-OMM': {
     id: 'D155-OMM',
     title: 'Operation & Maintenance Manual D155AX-8E0',

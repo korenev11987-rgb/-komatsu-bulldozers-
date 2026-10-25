@@ -1,4 +1,5 @@
-import type { ManualRef, RepairLibrary, RepairSection } from './types';
+import { D155_RU_BOOK } from './d155ru';
+import type { ManualRef, RepairBook, RepairLibrary, RepairSection, SectionKey } from './types';
 
 /*
  * ВНИМАНИЕ: здесь только то, что прочитано в конкретном мануале (см. manuals.ts).
@@ -782,4 +783,35 @@ const d475: RepairLibrary['D475'] = {
   },
 };
 
-export const REPAIR: RepairLibrary = { D155: d155, D355: d355, D475: d475 };
+/*
+ * D155: основной источник — русская заводская инструкция D155A-5 (SRBM028200, d155ru.ts).
+ * Данные OMM D155AX-8E0 сохраняются отдельным блоком с собственным источником.
+ */
+const SECTION_KEYS: SectionKey[] = ['components', 'disassembly', 'assembly', 'repair'];
+function mergeBooks(primary: RepairBook, secondary: RepairBook, extraTitle: string): RepairBook {
+  const out: RepairBook = {};
+  const ids = new Set([...Object.keys(primary), ...Object.keys(secondary)]) as Set<keyof RepairBook>;
+  for (const id of ids) {
+    const a = primary[id] ?? {};
+    const b = secondary[id] ?? {};
+    const card: Partial<Record<SectionKey, RepairSection>> = {};
+    for (const k of SECTION_KEYS) {
+      const pa = a[k];
+      const sb = b[k];
+      if (pa?.status === 'manual' && sb?.status === 'manual') {
+        card[k] = { ...pa, extra: { title: extraTitle, items: sb.items, source: sb.source } };
+      } else if (pa?.status === 'manual') card[k] = pa;
+      else if (sb?.status === 'manual') card[k] = sb;
+    }
+    out[id] = card;
+  }
+  return out;
+}
+
+export const D155_OMM_BOOK: RepairBook = d155 ?? {};
+
+export const REPAIR: RepairLibrary = {
+  D155: mergeBooks(D155_RU_BOOK, D155_OMM_BOOK, 'Дополнительно — D155AX-8E0 (Operation & Maintenance Manual, EENAM03780)'),
+  D355: d355,
+  D475: d475,
+};

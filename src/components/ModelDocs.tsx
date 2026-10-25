@@ -18,9 +18,13 @@ export function ModelDocs({ modelId, compact = false }: { modelId: ModelId; comp
           </a>
           <p className="docs__meta">
             {d.model}, № {d.docNo}. Источник:{' '}
-            <a href={d.sourceUrl} target="_blank" rel="noopener noreferrer">
-              {d.sourceLabel}
-            </a>
+            {d.sourceUrl ? (
+              <a href={d.sourceUrl} target="_blank" rel="noopener noreferrer">
+                {d.sourceLabel}
+              </a>
+            ) : (
+              d.sourceLabel
+            )}
             .
           </p>
           <p className="docs__note">{d.note}</p>

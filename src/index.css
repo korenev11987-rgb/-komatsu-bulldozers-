@@ -311,3 +311,7 @@ button { font: inherit; color: inherit; }
   .ms-group__title { font-size: 1rem; }
   .ms-group__chips { flex-wrap: nowrap; }
 }
+.rsec__scope { display: inline-block; margin: 2px 0 6px; padding: 2px 8px; border-radius: 999px; background: #fff3bf; border: 1px solid var(--komatsu); color: #5c4400; font-size: .76rem; font-weight: 700; }
+.rsec__extra { margin-top: 10px; padding-top: 8px; border-top: 1px dashed #dee2e6; }
+.rsec__extra-title { margin: 0 0 4px; font-size: .84rem; color: #495057; }
+.cite__page { font-weight: 600; color: #7a5a00; }

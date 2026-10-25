@@ -2,7 +2,7 @@ import { ModelDocs } from './ModelDocs';
 import { useEffect, useRef, useState } from 'react';
 import { SYSTEMS } from '../data/systems';
 import { getRepairCard, MANUALS } from '../data/repair';
-import type { RepairSection, SectionKey } from '../data/repair/types';
+import { manualPageUrl, type ManualRef, type RepairSection, type SectionKey } from '../data/repair/types';
 import type { BulldozerModel, NodeInfo } from '../types';
 
 interface Props {
@@ -159,26 +159,59 @@ function SectionView({ title, section, ordered }: { title: string; section: Repa
         <h3 className="panel__subtitle">{title}</h3>
         <span className="src-badge src-badge--ok">Данные из мануала</span>
       </div>
+      {section.scope && <p className="rsec__scope">{section.scope}</p>}
       <List className={ordered ? 'steps' : 'facts'}>
         {section.items.map((it, i) => (
           <li key={i}>{it}</li>
         ))}
       </List>
-      <div className="cite">
-        <span className="cite__label">Источник:</span>
-        <ul>
-          {section.source.map((r, i) => {
-            const d = MANUALS[r.doc];
-            return (
-              <li key={i}>
-                <cite>{d.title}</cite>, {d.model}
-                {d.docNo && <>, № {d.docNo}</>} — раздел «{r.section}», с. {r.pages}
-                {d.note && <span className="cite__note"> ({d.note})</span>}
-              </li>
-            );
-          })}
-        </ul>
-      </div>
+      <Cite refs={section.source} />
+      {section.extra && (
+        <div className="rsec__extra">
+          <h4 className="rsec__extra-title">{section.extra.title}</h4>
+          <ul className="facts">
+            {section.extra.items.map((it, i) => (
+              <li key={i}>{it}</li>
+            ))}
+          </ul>
+          <Cite refs={section.extra.source} />
+        </div>
+      )}
     </section>
+  );
+}
+
+function Cite({ refs }: { refs: ManualRef[] }) {
+  // Пояснение к документу показывается один раз на блок источников
+  const noted = new Set<string>();
+  return (
+    <div className="cite">
+      <span className="cite__label">Источник:</span>
+      <ul>
+        {refs.map((r, i) => {
+          const d = MANUALS[r.doc];
+          const href = manualPageUrl(d, r.pdfPage);
+          return (
+            <li key={i}>
+              <cite>{d.title}</cite>
+              {d.docNo && <>, {d.docNo}</>} ({d.model}) — раздел «{r.section}», с. {r.pages}
+              {r.pdfPage != null && (
+                <>
+                  {', '}
+                  {href ? (
+                    <a href={href} target="_blank" rel="noopener" className="cite__page" data-pdf-page={r.pdfPage}>
+                      стр. PDF {r.pdfPage}
+                    </a>
+                  ) : (
+                    <>стр. PDF {r.pdfPage}</>
+                  )}
+                </>
+              )}
+              {d.note && !noted.has(d.id) && noted.add(d.id) && <span className="cite__note"> ({d.note})</span>}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
