@@ -274,3 +274,19 @@ button { font: inherit; color: inherit; }
 @media (prefers-reduced-motion: reduce) {
   .panel--card { animation: none; }
 }
+
+/* ── Документы модели (PDF) ── */
+.docs { margin-top: 14px; padding: 14px 16px; background: var(--surface); border: 2px solid var(--border); border-left: 6px solid var(--komatsu, #f5b400); border-radius: var(--radius); }
+.docs--compact { margin: 12px 0 0; padding: 10px 12px; border-width: 1px 1px 1px 4px; font-size: .9rem; }
+.docs__title { margin: 0 0 8px; font-size: 1rem; }
+.docs__item + .docs__item { margin-top: 12px; }
+.docs__btn { display: inline-flex; align-items: center; gap: 10px; padding: 9px 14px; border-radius: 8px; background: var(--komatsu, #f5b400); color: #1a1a1a; font-weight: 700; text-decoration: none; border: 2px solid #1a1a1a; transition: transform .15s, box-shadow .15s; }
+.docs__btn:hover { transform: translateY(-1px); box-shadow: 0 3px 0 #1a1a1a; }
+.docs__btn:focus-visible { outline: 3px solid #1a1a1a; outline-offset: 2px; }
+.docs__icon { font-size: .7rem; padding: 2px 5px; border-radius: 4px; background: #c62828; color: #fff; letter-spacing: .05em; }
+.docs__meta, .docs__note { margin: 6px 0 0; font-size: .82rem; color: var(--muted); }
+.docs__note { color: #7a5200; }
+.docs__toggle { margin-top: 8px; padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border); background: transparent; cursor: pointer; font: inherit; font-size: .85rem; }
+.docs__preview { display: block; width: 100%; height: 70vh; margin-top: 10px; border: 1px solid var(--border); border-radius: 8px; }
+@media (max-width: 1000px) { .docs__btn { display: flex; } .docs__preview { height: 60vh; } }
+@media (prefers-reduced-motion: reduce) { .docs__btn { transition: none; } }

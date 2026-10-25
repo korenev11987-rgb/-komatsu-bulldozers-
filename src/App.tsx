@@ -1,3 +1,4 @@
+import { ModelDocs } from './components/ModelDocs';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { frameAt, STAGE_BY_ID, type StageId } from './anim/stages';
 import { useWorkAnimation } from './anim/useWorkAnimation';
@@ -49,7 +50,7 @@ export default function App() {
     const onDown = (e: PointerEvent) => {
       const t = e.target as Element | null;
       if (!t || !(t instanceof Element)) return;
-      if (t.closest('.panel, [data-node], .callout:not(.callout--passive), .model-switcher, .legend, .anim')) return;
+      if (t.closest('.panel, [data-node], .callout:not(.callout--passive), .model-switcher, .legend, .anim, .docs')) return;
       setSelectedId(null);
     };
     document.addEventListener('pointerdown', onDown);
@@ -85,6 +86,7 @@ export default function App() {
             anim={frame}
           />
           <AnimationPanel anim={anim} frame={frame} model={model} onSelectNode={setSelectedId} />
+          <ModelDocs modelId={model.id} />
         </section>
         {node && <div className="panel-backdrop" aria-hidden="true" />}
         <NodeDetailsPanel model={model} node={node} onClose={handleClose} />

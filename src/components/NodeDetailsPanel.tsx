@@ -1,3 +1,4 @@
+import { ModelDocs } from './ModelDocs';
 import { useEffect, useRef, useState } from 'react';
 import { SYSTEMS } from '../data/systems';
 import { getRepairCard, MANUALS } from '../data/repair';
@@ -127,6 +128,8 @@ export function NodeDetailsPanel({ model, node, onClose }: Props) {
           </>
         )}
       </div>
+
+      <ModelDocs modelId={model.id} compact />
 
       <p className="panel__disclaimer">
         Перед работами сверяйтесь с официальным Shop Manual / Operation &amp; Maintenance Manual Komatsu для серийного номера вашей машины. Каталожные номера запчастей не приводятся.
