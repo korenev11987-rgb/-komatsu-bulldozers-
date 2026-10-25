@@ -3,12 +3,16 @@ import { useEffect, useRef, useState } from 'react';
 import { SYSTEMS } from '../data/systems';
 import { getRepairCard, MANUALS } from '../data/repair';
 import { manualPageUrl, type ManualRef, type RepairSection, type SectionKey } from '../data/repair/types';
+import type { NodeManual } from '../data/repair/manualPages';
 import type { BulldozerModel, NodeInfo } from '../types';
 
 interface Props {
   model: BulldozerModel;
   node: NodeInfo | null;
   onClose: () => void;
+  /** Проверенные страницы мануала узла (null — страниц нет) */
+  manual?: NodeManual | null;
+  onOpenManual?: () => void;
 }
 
 type TabKey = 'overview' | SectionKey;
@@ -20,7 +24,7 @@ const SECTIONS: { key: SectionKey; title: string; tab: string; ordered: boolean 
   { key: 'repair', title: 'Как чинить: обслуживание и проверки', tab: 'Ремонт и ТО', ordered: false },
 ];
 
-export function NodeDetailsPanel({ model, node, onClose }: Props) {
+export function NodeDetailsPanel({ model, node, onClose, manual = null, onOpenManual }: Props) {
   const [tab, setTab] = useState<TabKey>('repair');
   const titleRef = useRef<HTMLHeadingElement>(null);
 
@@ -79,6 +83,18 @@ export function NodeDetailsPanel({ model, node, onClose }: Props) {
         {node.title}
       </h2>
       <p className="panel__model">{model.fullName}</p>
+      {manual && onOpenManual ? (
+        <button type="button" className="manual-open" onClick={onOpenManual} data-open-manual>
+          <span className="manual-open__icon" aria-hidden="true">PDF</span>
+          Открыть в мануале
+          <small>{manual.doc.title}, {manual.doc.docNo}</small>
+        </button>
+      ) : (
+        <p className="manual-missing" role="note" data-no-manual>
+          <span className="src-badge src-badge--none">данные из мануала не найдены</span>
+          <span className="manual-missing__text">страница мануала для этого узла не привязана — просмотр мануала недоступен</span>
+        </p>
+      )}
       <p className={`src-summary ${found ? 'src-summary--ok' : 'src-summary--none'}`}>
         {found ? `Данные из мануала: ${found} из ${SECTIONS.length} разделов` : 'Данные из мануала не найдены ни для одного раздела'}
       </p>
