@@ -1,8 +1,9 @@
-import type { ModelId, NodeId } from '../../types';
+import type { AnyNodeId as NodeId, ModelId } from '../../types';
 import { D155_RU_BLANK_PAGES, D155_RU_PAGE_LABELS } from './d155ruPageLabels';
 import { MANUALS } from './manuals';
 import { PAGE_IMAGE_SETS, type PageImageSet } from './manualImages';
 import { CAT_MANUAL_PAGES } from '../cat/docs';
+import { EXC_MANUAL_PAGES } from '../excavator/docs374';
 import type { ManualDoc } from './types';
 
 /*
@@ -66,6 +67,7 @@ const p = (pdfPage: number, label: string): ManualPage => ({ pdfPage, label });
 
 export const MANUAL_PAGES: Partial<Record<ModelId, ModelManualPages>> = {
   ...CAT_MANUAL_PAGES,
+  ...EXC_MANUAL_PAGES,
   D155: {
     doc: 'D155-SM-RU',
     pageLabel: (n) => D155_RU_PAGE_LABELS[n - 1],

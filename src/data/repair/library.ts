@@ -1,5 +1,6 @@
 import { D155_RU_BOOK } from './d155ru';
 import { CAT_REPAIR } from '../cat/docs';
+import { EXC_REPAIR } from '../excavator/docs374';
 import type { ManualRef, RepairBook, RepairLibrary, RepairSection, SectionKey } from './types';
 
 /*
@@ -816,4 +817,5 @@ export const REPAIR: RepairLibrary = {
   D355: d355,
   D475: d475,
   ...CAT_REPAIR,
+  ...EXC_REPAIR,
 };

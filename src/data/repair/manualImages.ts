@@ -14,6 +14,7 @@ import { D475_SM_IMAGES } from './d475Images';
 import { D475A3_SM_IMAGES } from './d475a3Images';
 import { CAT_D10T_EN_IMAGES, CAT_D10T_RU_IMAGES, CAT_D6R_IMAGES, CAT_D9R_IMAGES } from '../cat/images';
 import { CAT_PARTS_IMAGES } from '../cat/partsImages';
+import { EXC_PAGE_IMAGE_SETS } from '../excavator/docs374';
 
 export interface PageImageSet {
   /** id документа из manuals.ts */
@@ -50,6 +51,7 @@ export const PAGE_IMAGE_SETS: Readonly<Record<string, PageImageSet>> = {
   [CAT_D9R_IMAGES.doc]: CAT_D9R_IMAGES,
   [CAT_D6R_IMAGES.doc]: CAT_D6R_IMAGES,
   ...Object.fromEntries(CAT_PARTS_IMAGES.map((s) => [s.doc, s])),
+  ...EXC_PAGE_IMAGE_SETS,
 };
 
 export function pageSize(set: PageImageSet, n: number): readonly [number, number] {

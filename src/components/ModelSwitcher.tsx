@@ -1,18 +1,18 @@
 import { useEffect, useRef } from 'react';
 import { seriesOf } from '../data/models';
-import type { BulldozerModel, ModelId } from '../types';
+import type { AnyModel, ModelId } from '../types';
 
 interface Props {
-  models: BulldozerModel[];
+  models: AnyModel[];
   activeId: ModelId;
   onChange: (id: ModelId) => void;
 }
 
-const short = (m: BulldozerModel) => m.fullName.replace(/^(Komatsu|Caterpillar|Cat)\s+/, '');
+const short = (m: AnyModel) => (m.kind === 'excavator' ? `${m.name.replace(/^Cat\s+/, '')} · экскаватор` : m.fullName.replace(/^(Komatsu|Caterpillar|Cat)\s+/, ''));
 
 /** Переключатель моделей, сгруппированный по сериям: D155 / D275 / D355 / D375 / D475 */
 export function ModelSwitcher({ models, activeId, onChange }: Props) {
-  const groups: { series: string; items: BulldozerModel[] }[] = [];
+  const groups: { series: string; items: AnyModel[] }[] = [];
   for (const m of models) {
     const s = seriesOf(m);
     const g = groups.find((x) => x.series === s);
@@ -33,7 +33,7 @@ export function ModelSwitcher({ models, activeId, onChange }: Props) {
 
   return (
     <div className="model-switcher">
-      <div className="ms-row" ref={rowRef} role="tablist" aria-label="Выбор модели бульдозера">
+      <div className="ms-row" ref={rowRef} role="tablist" aria-label="Выбор модели">
         {groups.map((g) => {
           const on = g.items.some((m) => m.id === activeId);
           return (

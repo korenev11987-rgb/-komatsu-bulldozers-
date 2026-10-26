@@ -1,0 +1,8 @@
+/* Экскаватор Cat 374D L: схема и каталог в карточке */
+.schema--excavator .exc-cw { font: 800 15px/1 system-ui, sans-serif; fill: #1d1d1d; letter-spacing: 1px; }
+.schema--excavator .exc-dims line { stroke: #343a40; stroke-width: 1; marker-start: none; }
+.schema--excavator .exc-dims text { font: 600 10.5px/1 system-ui, sans-serif; fill: #343a40; }
+.schema--excavator .exc-tag rect { fill: #ffffffe6; stroke: var(--c); stroke-width: 1.5; }
+.schema--excavator .exc-tag text { font: 700 12px/1 system-ui, sans-serif; fill: #212529; }
+.schema--excavator .node--xray .xr-wire { opacity: .9; }
+.schema--excavator .exc-cab { opacity: .86; }

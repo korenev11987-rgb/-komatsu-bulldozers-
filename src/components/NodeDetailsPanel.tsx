@@ -6,10 +6,10 @@ import { manualPageUrl, type ManualRef, type RepairSection, type SectionKey } fr
 import type { NodeManual } from '../data/repair/manualPages';
 import type { BreakdownRef, PartBreakdownData } from '../data/repair/types';
 import { PartBreakdown } from './PartBreakdown';
-import type { BulldozerModel, NodeInfo } from '../types';
+import type { AnyModel, NodeInfo } from '../types';
 
 interface Props {
-  model: BulldozerModel;
+  model: AnyModel;
   node: NodeInfo | null;
   onClose: () => void;
   /** Проверенные страницы мануала узла (null — страниц нет) */

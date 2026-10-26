@@ -1,5 +1,6 @@
 import type { ManualDoc } from './types';
 import { CAT_MANUALS } from '../cat/docs';
+import { EXC_MANUALS } from '../excavator/docs374';
 
 /**
  * Документы, из которых взяты данные карточек.
@@ -7,6 +8,7 @@ import { CAT_MANUALS } from '../cat/docs';
  */
 export const MANUALS: Record<string, ManualDoc> = {
   ...CAT_MANUALS,
+  ...EXC_MANUALS,
   'D155-SM-RU': {
     id: 'D155-SM-RU',
     title: 'Заводская инструкция D155A-5',

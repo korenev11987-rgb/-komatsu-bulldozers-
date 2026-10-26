@@ -42,7 +42,28 @@ export type ModelId =
   /* Caterpillar (элевированная звёздочка) */
   | 'CAT-D6R'
   | 'CAT-D9R'
-  | 'CAT-D10T';
+  | 'CAT-D10T'
+  /* Caterpillar, гидравлический экскаватор (отдельный тип машины — kind: 'excavator') */
+  | 'CAT-374DL';
+
+/** Узлы, которые есть только у экскаватора (добавлены к общим NodeId; узлы бульдозеров не меняются) */
+export type ExcavatorNodeId =
+  | 'boom'
+  | 'stick'
+  | 'bucket'
+  | 'boomCylinders'
+  | 'stickCylinder'
+  | 'bucketCylinder'
+  | 'mainValve'
+  | 'swingMotors'
+  | 'travelMotors'
+  | 'swivel'
+  | 'hydTank'
+  | 'swingDrive'
+  | 'swingBearing';
+
+/** Любой узел любой машины (бульдозер или экскаватор) */
+export type AnyNodeId = NodeId | ExcavatorNodeId;
 
 export interface SystemInfo {
   id: SystemId;
@@ -57,7 +78,7 @@ export interface Part {
 }
 
 export interface NodeInfo {
-  id: NodeId;
+  id: AnyNodeId;
   system: SystemId;
   title: string;
   description: string;
@@ -180,6 +201,8 @@ export interface SpecItem {
 }
 
 export interface BulldozerModel {
+  /** Тип машины (не задан — бульдозер) */
+  kind?: 'dozer';
   id: ModelId;
   name: string;
   fullName: string;
@@ -190,3 +213,49 @@ export interface BulldozerModel {
   layout: LayoutParams;
   nodes: Record<NodeId, NodeInfo>;
 }
+
+/** Паспортные размеры экскаватора (мм) для рисунка в масштабе; источник каждого поля — в данных модели */
+export interface ExcavatorDims {
+  shippingLength: number;
+  shippingHeight: number;
+  tailSwingRadius: number;
+  rollerCenters: number;
+  trackLength: number;
+  groundClearance: number;
+  cabHeight: number;
+  trackGaugeShipping: number;
+  trackGaugeWorking: number;
+  transportWidth: number;
+  boomLength: number;
+  stickLength: number;
+  bucketTipRadius: number;
+  /* ---- Оценка (в спецификации не опубликовано; только для рисунка) ---- */
+  /** Просвет под противовесом/платформой — оценка */
+  upperClearance: number;
+  /** Высота капота двигателя — оценка */
+  hoodHeight: number;
+  /** Пята стрелы: вынос вперёд от оси поворота и высота — оценка */
+  boomFootX: number;
+  boomFootY: number;
+  /** Длина кабины и вынос её передней стенки от оси поворота — оценка */
+  cabLength: number;
+  cabFrontX: number;
+}
+
+/** Гидравлический экскаватор: те же карточки, свой набор узлов и своя схема */
+export interface ExcavatorModel {
+  kind: 'excavator';
+  id: ModelId;
+  name: string;
+  fullName: string;
+  series?: string;
+  tagline: string;
+  specs: SpecItem[];
+  dims: ExcavatorDims;
+  /** Подписи систем для легенды (у экскаватора другой состав систем) */
+  systemSubtitles: Partial<Record<SystemId, string>>;
+  nodes: Partial<Record<AnyNodeId, NodeInfo>>;
+}
+
+export type AnyModel = BulldozerModel | ExcavatorModel;
+export const isExcavator = (m: AnyModel): m is ExcavatorModel => m.kind === 'excavator';

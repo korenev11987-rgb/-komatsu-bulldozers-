@@ -1,5 +1,6 @@
 import type { ModelId } from '../types';
 import { CAT_MODEL_DOCS } from './cat/docs';
+import { EXC_MODEL_DOCS } from './excavator/docs374';
 
 export interface ModelDocument {
   id: string;
@@ -39,6 +40,7 @@ export const MODEL_DOCS: Partial<Record<ModelId, ModelDocument[]>> = {
     },
   ],
   ...CAT_MODEL_DOCS,
+  ...EXC_MODEL_DOCS,
 };
 
 export const docUrl = (d: ModelDocument): string => `${import.meta.env.BASE_URL}${d.file}`;

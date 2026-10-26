@@ -1,4 +1,4 @@
-import type { ModelId, NodeId } from '../../types';
+import type { AnyNodeId as NodeId, ModelId } from '../../types';
 
 /** Опубликованный документ Komatsu, из которого взяты данные */
 export interface ManualDoc {

@@ -11,11 +11,18 @@ import { ManualViewer } from './components/ManualViewer';
 import { firstManualKind, getNodeManual, nodeDoc } from './data/repair/manualPages';
 import { getBreakdown } from './data/repair/breakdown';
 import { MODELS, MODEL_ORDER } from './data/models';
-import type { ModelId, NodeId, SystemId } from './types';
+import { isExcavator, type AnyModel, type AnyNodeId, type ModelId, type NodeId, type NodeInfo, type SystemId } from './types';
+import { ExcavatorSchema } from './components/ExcavatorSchema';
+import { ExcAnimationPanel } from './components/ExcAnimationPanel';
+import { EXC_STAGE_BY_ID, excFrameAt, useExcAnimation, type ExcStageId } from './anim/excavator';
+import './excavator.css';
+
+/** Узел модели по id (у бульдозеров и экскаватора разные наборы узлов) */
+const nodeOf = (m: AnyModel, id: AnyNodeId | null): NodeInfo | null => (id ? ((m.nodes as Partial<Record<AnyNodeId, NodeInfo>>)[id] ?? null) : null);
 
 export default function App() {
   const [modelId, setModelId] = useState<ModelId>(() => readUrl().model);
-  const [selectedId, setSelectedId] = useState<NodeId | null>(() => readUrl().node);
+  const [selectedId, setSelectedId] = useState<AnyNodeId | null>(() => readUrl().node);
   const [activeSystem, setActiveSystem] = useState<SystemId | null>(null);
   /** Открытый просмотр мануала: страница PDF (узел — selectedId) */
   const [viewerPage, setViewerPage] = useState<number | null>(() => readUrl().page);
@@ -23,19 +30,26 @@ export default function App() {
   const [viewerDoc, setViewerDoc] = useState<string | null>(() => readUrl().doc);
 
   const model = MODELS[modelId];
+  const dozer = isExcavator(model) ? null : model;
+  const exc = isExcavator(model) ? model : null;
   const anim = useWorkAnimation();
-  const frame = useMemo(() => (anim.stage ? frameAt(anim.stage, anim.t, anim.time, model.layout) : null), [anim.stage, anim.t, anim.time, model.layout]);
+  const excAnim = useExcAnimation();
+  const layout = dozer?.layout;
+  const frame = useMemo(() => (anim.stage && layout ? frameAt(anim.stage, anim.t, anim.time, layout) : null), [anim.stage, anim.t, anim.time, layout]);
+  const excFrame = useMemo(() => (excAnim.stage ? excFrameAt(excAnim.stage, excAnim.t) : null), [excAnim.stage, excAnim.t]);
 
   // ?anim=rip&t=0.5 — открыть кадр этапа (для ссылок и проверки)
   const [initParams] = useState(() => new URLSearchParams(window.location.search));
   useEffect(() => {
     const params = initParams;
     const a = params.get('anim');
-    if (a && a in STAGE_BY_ID) anim.seek(a as StageId, Math.min(1, Math.max(0, Number(params.get('t') ?? 0.5))));
+    const t = Math.min(1, Math.max(0, Number(params.get('t') ?? 0.5)));
+    if (a && a in STAGE_BY_ID) anim.seek(a as StageId, t);
+    else if (a && a in EXC_STAGE_BY_ID) excAnim.seek(a as ExcStageId, t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   // Узлы общие для всех моделей, поэтому выбранный узел сохраняется при смене модели — удобно сравнивать
-  const node = selectedId ? model.nodes[selectedId] : null;
+  const node = nodeOf(model, selectedId);
   const nodeManual = useMemo(() => (selectedId ? getNodeManual(modelId, selectedId) : null), [modelId, selectedId]);
   const viewerOpen = viewerPage != null && nodeManual != null;
   const breakdown = useMemo(() => (selectedId ? getBreakdown(modelId, selectedId) : null), [modelId, selectedId]);
@@ -57,7 +71,7 @@ export default function App() {
     if (viewerPage != null && !nodeManual) setViewerPage(null);
   }, [viewerPage, nodeManual]);
 
-  const handleSelect = useCallback((id: NodeId) => {
+  const handleSelect = useCallback((id: AnyNodeId) => {
     setSelectedId((prev) => (prev === id ? null : id));
   }, []);
   const handleClose = useCallback(() => {
@@ -68,7 +82,7 @@ export default function App() {
 
   /** Открыть мануал узла на первом доступном разделе (разборка → сборка → нормы) */
   const openManual = useCallback(
-    (id: NodeId) => {
+    (id: AnyNodeId) => {
       const nm = getNodeManual(modelId, id);
       const kind = nm && firstManualKind(nm.pages);
       if (!nm || !kind) return false;
@@ -82,7 +96,7 @@ export default function App() {
 
   // Клик / Enter / Пробел по узлу схемы: есть страница мануала — просмотр; нет — карточка как раньше
   const handleSchemaSelect = useCallback(
-    (id: NodeId) => {
+    (id: AnyNodeId) => {
       if (openManual(id)) return;
       setViewerPage(null);
       setViewerDoc(null);
@@ -109,7 +123,7 @@ export default function App() {
   const handleSystem = useCallback(
     (id: SystemId | null) => {
       setActiveSystem(id);
-      if (id && selectedId && model.nodes[selectedId].system !== id) setSelectedId(null);
+      if (id && selectedId && nodeOf(model, selectedId)?.system !== id) setSelectedId(null);
     },
     [model, selectedId],
   );
@@ -117,24 +131,28 @@ export default function App() {
   return (
     <div className="app">
       <header className="app__header">
-        <h1>Бульдозеры Komatsu и Caterpillar: интерактивные схемы</h1>
+        <h1>Бульдозеры Komatsu и Caterpillar, экскаватор Cat 374D L: интерактивные схемы</h1>
         <p>Схемы по системам: мотор, ходовая, трансмиссия, гидравлика и электрика. Значения приблизительные.</p>
       </header>
 
       <ModelSwitcher models={MODEL_ORDER.map((id) => MODELS[id])} activeId={modelId} onChange={setModelId} />
 
-      <Legend activeSystem={activeSystem} onToggle={handleSystem} />
+      <Legend activeSystem={activeSystem} onToggle={handleSystem} subtitles={exc?.systemSubtitles} />
 
       <main className="app__main">
         <section className="app__schema" aria-label="Схема">
-          <BulldozerSchema
-            model={model}
-            selectedId={selectedId}
-            activeSystem={activeSystem}
-            onSelect={handleSchemaSelect}
-            anim={frame}
-          />
-          <AnimationPanel anim={anim} frame={frame} model={model} onSelectNode={setSelectedId} />
+          {dozer && (
+            <>
+              <BulldozerSchema model={dozer} selectedId={selectedId as NodeId | null} activeSystem={activeSystem} onSelect={handleSchemaSelect} anim={frame} />
+              <AnimationPanel anim={anim} frame={frame} model={dozer} onSelectNode={setSelectedId} />
+            </>
+          )}
+          {exc && (
+            <>
+              <ExcavatorSchema model={exc} selectedId={selectedId} activeSystem={activeSystem} onSelect={handleSchemaSelect} anim={excFrame} />
+              <ExcAnimationPanel anim={excAnim} frame={excFrame} model={exc} onSelectNode={setSelectedId} />
+            </>
+          )}
           <ModelDocs modelId={model.id} />
         </section>
         {node && <div className="panel-backdrop" aria-hidden="true" />}
@@ -181,18 +199,18 @@ export default function App() {
       )}
 
       <footer className="app__footer">
-        Учебная схема. Komatsu, D155, D355, D475, Sigmadozer, TORQFLOW — обозначения производителя Komatsu Ltd. Cat, Caterpillar, D6R, D9R, D10T, ACERT — товарные знаки Caterpillar Inc.; сайт с Caterpillar не связан.
+        Учебная схема. Komatsu, D155, D355, D475, Sigmadozer, TORQFLOW — обозначения производителя Komatsu Ltd. Cat, Caterpillar, D6R, D9R, D10T, 374D L, ACERT — товарные знаки Caterpillar Inc.; сайт с Caterpillar не связан.
       </footer>
     </div>
   );
 }
 
-function readUrl(): { model: ModelId; node: NodeId | null; page: number | null; doc: string | null } {
+function readUrl(): { model: ModelId; node: AnyNodeId | null; page: number | null; doc: string | null } {
   const params = new URLSearchParams(window.location.search);
   const m = params.get('model');
   const model: ModelId = m && m in MODELS ? (m as ModelId) : 'D155';
   const n = params.get('node');
-  const node = n && n in MODELS[model].nodes ? (n as NodeId) : null;
+  const node = n && n in MODELS[model].nodes ? (n as AnyNodeId) : null;
   // ?page=N — открыть просмотр мануала на странице PDF (только если у узла есть страницы)
   const pg = Number(params.get('page'));
   const page = node && Number.isInteger(pg) && pg > 0 && getNodeManual(model, node) ? pg : null;

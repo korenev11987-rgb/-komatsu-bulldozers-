@@ -1,4 +1,4 @@
-import type { ModelId, NodeId } from '../../types';
+import type { AnyNodeId as NodeId, ModelId } from '../../types';
 import { MANUALS } from './manuals';
 import { REPAIR } from './library';
 import { NOT_FOUND, type RepairCard } from './types';

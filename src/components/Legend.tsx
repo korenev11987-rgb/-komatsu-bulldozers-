@@ -4,13 +4,15 @@ import type { SystemId } from '../types';
 interface Props {
   activeSystem: SystemId | null;
   onToggle: (id: SystemId | null) => void;
+  /** Подписи систем для текущей модели (у экскаватора другой состав систем) */
+  subtitles?: Partial<Record<SystemId, string>>;
 }
 
-export function Legend({ activeSystem, onToggle }: Props) {
+export function Legend({ activeSystem, onToggle, subtitles }: Props) {
   return (
     <div className="legend" role="group" aria-label="Фильтр по системам">
       {SYSTEM_ORDER.map((id) => {
-        const s = SYSTEMS[id];
+        const s = { ...SYSTEMS[id], subtitle: subtitles?.[id] ?? SYSTEMS[id].subtitle };
         const active = activeSystem === id;
         return (
           <button
