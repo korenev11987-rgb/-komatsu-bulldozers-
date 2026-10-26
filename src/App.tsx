@@ -138,9 +138,10 @@ export default function App() {
 
       {viewerOpen && node && nodeManual && (
         <ManualViewer
+          key={`${modelId}:${node.id}`}
           manual={nodeManual}
           nodeTitle={node.title}
-          page={viewerPage ?? 1}
+          initialPage={viewerPage ?? 1}
           onPageChange={setViewerPage}
           onClose={() => setViewerPage(null)}
           onShowCard={() => {

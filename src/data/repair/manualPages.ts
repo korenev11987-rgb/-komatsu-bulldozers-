@@ -1,6 +1,7 @@
 import type { ModelId, NodeId } from '../../types';
 import { D155_RU_BLANK_PAGES, D155_RU_PAGE_LABELS } from './d155ruPageLabels';
 import { MANUALS } from './manuals';
+import { PAGE_IMAGE_SETS, type PageImageSet } from './manualImages';
 import type { ManualDoc } from './types';
 
 /*
@@ -8,7 +9,7 @@ import type { ManualDoc } from './types';
  * ТОЛЬКО проверенные страницы (номер PDF и колонтитул сверены по скану) — ничего не угадывать.
  *   disassembly — снятие/разборка (глава 30), assembly — установка/сборка (глава 30),
  *   specs — нормы: стандартные значения (главы 10/20) или стандарт техобслуживания (глава 40).
- * Чтобы добавить модель: новый ключ в MANUAL_PAGES с doc (id из manuals.ts, у документа должен быть file)
+ * Чтобы добавить модель: новый ключ в MANUAL_PAGES с doc (id из manuals.ts; для doc нужен набор изображений в manualImages.ts)
  * и картой nodes; при желании — pageLabel(pdfPage) для подписи страниц при листании.
  */
 
@@ -77,8 +78,8 @@ export interface NodeManual {
   model: ModelId;
   node: NodeId;
   doc: ManualDoc;
-  /** URL файла PDF (без #page) */
-  fileUrl: string;
+  /** Изображения страниц мануала для ленты просмотра */
+  images: PageImageSet;
   pages: NodeManualPages;
   info: ModelManualPages;
 }
@@ -89,8 +90,9 @@ export function getNodeManual(model: ModelId, node: NodeId): NodeManual | null {
   const pages = info?.nodes[node];
   if (!info || !pages || !MANUAL_PAGE_KINDS.some((k) => pages[k.key])) return null;
   const doc = MANUALS[info.doc];
-  if (!doc?.file) return null;
-  return { model, node, doc, fileUrl: `${import.meta.env.BASE_URL}${doc.file}`, pages, info };
+  const images = PAGE_IMAGE_SETS[info.doc];
+  if (!doc || !images) return null;
+  return { model, node, doc, images, pages, info };
 }
 
 /** Первый доступный раздел: разборка → сборка → нормы */

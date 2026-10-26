@@ -1,50 +1,18 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { PDFDocumentLoadingTask, PDFDocumentProxy, RenderTask } from 'pdfjs-dist';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { pageImageUrl, pageLabel, pageSize } from '../data/repair/manualImages';
 import { MANUAL_PAGE_KINDS, type ManualPageKind, type NodeManual } from '../data/repair/manualPages';
 
 /*
- * Просмотр страницы мануала поверх схемы.
- * pdf.js (pdfjs-dist) грузится лениво отдельным чанком; worker — отдельный файл из сборки (?url), поэтому
- * путь корректен при любой базе (в т. ч. '/-komatsu-bulldozers-/'). PDF читается диапазонами (HTTP Range),
- * без предварительной загрузки всего файла, рендерится одна страница в canvas.
+ * Просмотр мануала — непрерывная вертикальная лента изображений страниц (без PDF).
+ * Лента охватывает весь мануал и открывается на странице узла; рендерятся только видимые страницы ±2
+ * (виртуализация), у остальных — места точного размера (размеры из манифеста), поэтому прокрутка не прыгает.
  *
- * Масштаб: 100 % = «По ширине» (страница по ширине окна просмотра); 50–400 %, шаг 25 %.
- * Колесо мыши прокручивает страницу; Ctrl + колесо (и жест «щипок» на тачпаде) — масштаб относительно курсора.
- * Перетаскивание мышью/пальцем — панорамирование; два пальца — масштаб (pinch).
- * Клавиши: + / = — крупнее, − — мельче, 0 — по ширине, ← / → (PageUp / PageDown) — страницы, Esc — закрыть.
+ * Масштаб: 100 % = «По ширине» (ширина страницы = ширина окна просмотра); 50–400 %, шаг 25 %.
+ * Колесо мыши прокручивает ленту; Ctrl + колесо (и «щипок» на тачпаде/двумя пальцами) — масштаб у курсора.
+ * При масштабе > 100 % — горизонтальная прокрутка; перетаскивание мышью — панорамирование в обе стороны;
+ * на сенсорном экране лента прокручивается пальцем (нативно).
+ * Клавиши: + / = — крупнее, − — мельче, 0 — по ширине, ← / → и PageUp / PageDown — страница назад/вперёд, Esc — закрыть.
  */
-
-type PdfJs = typeof import('pdfjs-dist');
-let pdfjsPromise: Promise<PdfJs> | null = null;
-function loadPdfJs(): Promise<PdfJs> {
-  if (!pdfjsPromise) {
-    pdfjsPromise = Promise.all([import('pdfjs-dist'), import('pdfjs-dist/build/pdf.worker.min.mjs?url')]).then(([lib, worker]) => {
-      lib.GlobalWorkerOptions.workerSrc = worker.default;
-      return lib;
-    });
-  }
-  return pdfjsPromise;
-}
-
-/** Открытые документы кэшируются: повторное открытие просмотра не перечитывает PDF */
-const docCache = new Map<string, Promise<PDFDocumentProxy>>();
-function openDoc(url: string): Promise<PDFDocumentProxy> {
-  let p = docCache.get(url);
-  if (!p) {
-    p = loadPdfJs().then((lib) => {
-      const task: PDFDocumentLoadingTask = lib.getDocument({
-        url,
-        disableAutoFetch: true,
-        disableStream: true,
-        rangeChunkSize: 256 * 1024,
-      });
-      return task.promise;
-    });
-    p.catch(() => docCache.delete(url));
-    docCache.set(url, p);
-  }
-  return p;
-}
 
 export const ZOOM_MIN = 50;
 export const ZOOM_MAX = 400;
@@ -52,166 +20,224 @@ export const ZOOM_STEP = 25;
 const clampZoom = (z: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(z)));
 /** Масштаб сохраняется между страницами, разделами и повторными открытиями */
 let rememberedZoom = 100;
-/** Ограничение размера canvas (пикселей), чтобы не исчерпать память на 400 % × DPR */
-const MAX_CANVAS_PIXELS = 48e6;
+/** Отступы ленты и промежуток между страницами (css px, не зависят от масштаба) */
+const PAD = 12;
+const GAP = 12;
+/** Сколько страниц сверх видимых держать в DOM с каждой стороны */
+const OVERSCAN = 2;
 
 interface Props {
   manual: NodeManual;
   nodeTitle: string;
-  page: number;
+  /** Страница, на которой лента открывается (pdfPage) */
+  initialPage: number;
+  /** Текущая страница изменилась (прокрутка/переход) — для синхронизации ?page= */
   onPageChange: (pdfPage: number) => void;
   onClose: () => void;
   onShowCard: () => void;
 }
 
-export function ManualViewer({ manual, nodeTitle, page, onPageChange, onClose, onShowCard }: Props) {
+interface Anchor {
+  /** Точка внутри окна просмотра */
+  ax: number;
+  ay: number;
+  page: number;
+  fy: number;
+  fx: number;
+}
+
+export function ManualViewer({ manual, nodeTitle, initialPage, onPageChange, onClose, onShowCard }: Props) {
+  const set = manual.images;
+  const total = set.pageCount;
   const dialogRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
-  const [doc, setDoc] = useState<PDFDocumentProxy | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [rendering, setRendering] = useState(true);
   const [zoom, setZoomState] = useState(rememberedZoom);
-  const [stageW, setStageW] = useState(0);
-  /** Размер страницы при scale = 1 (pt) */
-  const [base, setBase] = useState<{ w: number; h: number } | null>(null);
-  const anchorRef = useRef<{ x: number; y: number; from: number } | null>(null);
-  const [rendered, setRendered] = useState<{ page: number; css: number } | null>(null);
+  const [stage, setStage] = useState({ w: 0, h: 0 });
+  const [range, setRange] = useState<[number, number]>([initialPage, initialPage]);
+  const [current, setCurrent] = useState(Math.min(Math.max(1, initialPage), total));
+  const [jump, setJump] = useState('');
+  const anchorRef = useRef<Anchor | null>(null);
+  const pendingScrollRef = useRef<number | null>(Math.min(Math.max(1, initialPage), total));
+  const blank = useMemo(() => new Set(set.blank), [set]);
 
-  const total = doc?.numPages ?? null;
-  const label = manual.info.pageLabel?.(page);
-  const blank = manual.info.blankPages?.includes(page);
-  const fileHref = `${manual.fileUrl}#page=${page}`;
-  const currentKind = MANUAL_PAGE_KINDS.find((k) => manual.pages[k.key]?.pdfPage === page)?.key ?? null;
+  // ── Раскладка: ширина ленты и вертикальные позиции страниц ──
+  const fitW = Math.max(120, stage.w - 2 * PAD);
+  const feedW = Math.round(fitW * (zoom / 100));
+  const layout = useMemo(() => {
+    const tops = new Float64Array(total + 2);
+    const heights = new Float64Array(total + 1);
+    let y = PAD;
+    for (let n = 1; n <= total; n++) {
+      const [w, h] = pageSize(set, n);
+      tops[n] = y;
+      heights[n] = Math.round((feedW * h) / w);
+      y += heights[n] + GAP;
+    }
+    tops[total + 1] = y;
+    return { tops, heights, height: y - GAP + PAD };
+  }, [set, total, feedW]);
+  const feedLeft = Math.max(PAD, (stage.w - feedW) / 2);
 
-  const setZoom = useCallback((next: number, anchor?: { x: number; y: number }) => {
-    setZoomState((prev) => {
-      const z = clampZoom(next);
-      if (z === prev) return prev;
-      const st = stageRef.current;
-      anchorRef.current = st ? { x: anchor?.x ?? st.clientWidth / 2, y: anchor?.y ?? st.clientHeight / 2, from: prev } : null;
-      rememberedZoom = z;
-      return z;
+  /** Страница, содержащая координату y ленты (двоичный поиск) */
+  const pageAt = useCallback(
+    (y: number) => {
+      const { tops } = layout;
+      let lo = 1;
+      let hi = total;
+      while (lo < hi) {
+        const mid = (lo + hi + 1) >> 1;
+        if (tops[mid] <= y) lo = mid;
+        else hi = mid - 1;
+      }
+      return lo;
+    },
+    [layout, total],
+  );
+
+  const updateRange = useCallback(() => {
+    const st = stageRef.current;
+    if (!st) return;
+    const a = pageAt(st.scrollTop + GAP);
+    const b = pageAt(st.scrollTop + st.clientHeight);
+    setRange((r) => {
+      const next: [number, number] = [Math.max(1, a - OVERSCAN), Math.min(total, b + OVERSCAN)];
+      return r[0] === next[0] && r[1] === next[1] ? r : next;
     });
-  }, []);
-  const zoomBy = useCallback((dir: 1 | -1, anchor?: { x: number; y: number }) => {
-    setZoomState((prev) => {
-      // шаг 25 %: с «нестандартного» значения (после pinch / Ctrl+колесо) — к ближайшему кратному
-      const z = clampZoom(dir > 0 ? Math.floor(prev / ZOOM_STEP) * ZOOM_STEP + ZOOM_STEP : Math.ceil(prev / ZOOM_STEP) * ZOOM_STEP - ZOOM_STEP);
-      if (z === prev) return prev;
-      const st = stageRef.current;
-      anchorRef.current = st ? { x: anchor?.x ?? st.clientWidth / 2, y: anchor?.y ?? st.clientHeight / 2, from: prev } : null;
-      rememberedZoom = z;
-      return z;
-    });
-  }, []);
+  }, [pageAt, total]);
 
-  // Документ
-  useEffect(() => {
-    let alive = true;
-    setError(null);
-    openDoc(manual.fileUrl).then(
-      (d) => alive && setDoc(d),
-      (e: unknown) => alive && setError(e instanceof Error ? e.message : String(e)),
-    );
-    return () => {
-      alive = false;
-    };
-  }, [manual.fileUrl]);
+  /** Текущая страница — та, что пересекает линию на 30 % высоты окна */
+  const updateCurrent = useCallback(() => {
+    const st = stageRef.current;
+    if (!st) return;
+    setCurrent(pageAt(st.scrollTop + st.clientHeight * 0.3));
+  }, [pageAt]);
 
-  // Ширина области просмотра (для «по ширине»)
+  // Размер окна просмотра
   useLayoutEffect(() => {
     const st = stageRef.current;
     if (!st) return;
-    const update = () => setStageW(st.clientWidth);
+    const update = () => {
+      const w = st.clientWidth;
+      const h = st.clientHeight;
+      setStage((s) => {
+        if (s.w === w && s.h === h) return s;
+        // сохранить текущую точку при изменении ширины (поворот экрана, ресайз)
+        if (s.w && !anchorRef.current && pendingScrollRef.current == null) anchorRef.current = captureAnchor(st.clientWidth / 2, 0);
+        return { w, h };
+      });
+    };
     update();
     const ro = new ResizeObserver(update);
     ro.observe(st);
     return () => ro.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const fitScale = base && stageW ? Math.max(0.1, (stageW - 24) / base.w) : 0;
-  const cssScale = fitScale * (zoom / 100);
-  const cssW = base ? Math.round(base.w * cssScale) : 0;
-  const cssH = base ? Math.round(base.h * cssScale) : 0;
+  // Снимок точки под курсором/центром — для удержания при смене масштаба
+  const layoutRef = useRef(layout);
+  layoutRef.current = layout;
+  const feedRef = useRef({ feedW, feedLeft });
+  feedRef.current = { feedW, feedLeft };
+  const captureAnchor = (ax: number, ay: number): Anchor | null => {
+    const st = stageRef.current;
+    if (!st) return null;
+    const y = st.scrollTop + ay;
+    const page = pageAt(y);
+    const { tops, heights } = layoutRef.current;
+    const { feedW: fw, feedLeft: fl } = feedRef.current;
+    return { ax, ay, page, fy: (y - tops[page]) / Math.max(1, heights[page]), fx: (st.scrollLeft + ax - fl) / Math.max(1, fw) };
+  };
 
-  // Удерживать точку под курсором/центром при смене масштаба
+  // Применить отложенную прокрутку (открытие/переход на страницу) или вернуть точку-якорь после перераскладки
   useLayoutEffect(() => {
-    const a = anchorRef.current;
     const st = stageRef.current;
-    if (!a || !st || !base) return;
-    anchorRef.current = null;
-    const k = zoom / a.from;
-    st.scrollLeft = (st.scrollLeft + a.x) * k - a.x;
-    st.scrollTop = (st.scrollTop + a.y) * k - a.y;
-  }, [zoom, base]);
-
-  // Рендер страницы (по DPR, без растягивания CSS)
-  useEffect(() => {
-    if (!doc) return;
-    let cancelled = false;
-    let task: RenderTask | null = null;
-    setRendering(true);
-    (async () => {
-      try {
-        const pg = await doc.getPage(Math.min(Math.max(1, page), doc.numPages));
-        if (cancelled) return;
-        const v1 = pg.getViewport({ scale: 1 });
-        if (!base || Math.abs(base.w - v1.width) > 0.5 || Math.abs(base.h - v1.height) > 0.5) {
-          setBase({ w: v1.width, h: v1.height });
-          return; // повторный запуск эффекта с новым размером
-        }
-        if (!cssScale) return;
-        const dpr = window.devicePixelRatio || 1;
-        const vpCss = pg.getViewport({ scale: cssScale });
-        const ratio = Math.min(dpr, Math.sqrt(MAX_CANVAS_PIXELS / (vpCss.width * vpCss.height)));
-        const vp = pg.getViewport({ scale: cssScale * ratio });
-        const off = document.createElement('canvas');
-        off.width = Math.floor(vp.width);
-        off.height = Math.floor(vp.height);
-        const ctx = off.getContext('2d');
-        if (!ctx) throw new Error('canvas 2d недоступен');
-        task = pg.render({ canvasContext: ctx, viewport: vp });
-        await task.promise;
-        if (cancelled) return;
-        const c = canvasRef.current;
-        if (!c) return;
-        c.width = off.width;
-        c.height = off.height;
-        c.getContext('2d')?.drawImage(off, 0, 0);
-        c.dataset.page = String(page);
-        c.dataset.scale = (vp.scale / cssScale).toFixed(3);
-        setRendered({ page, css: cssScale });
-        setRendering(false);
-      } catch (e: unknown) {
-        if (cancelled || (e instanceof Error && e.name === 'RenderingCancelledException')) return;
-        setError(e instanceof Error ? e.message : String(e));
-        setRendering(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-      task?.cancel();
-    };
-  }, [doc, page, cssScale, base]);
-
-  // При смене страницы — к началу страницы
-  useEffect(() => {
-    const st = stageRef.current;
-    if (st) {
-      st.scrollTop = 0;
-      st.scrollLeft = 0;
+    if (!st || !stage.w) return;
+    const target = pendingScrollRef.current;
+    if (target != null) {
+      pendingScrollRef.current = null;
+      anchorRef.current = null;
+      st.scrollTop = layout.tops[target] - PAD / 2;
+      st.scrollLeft = (st.scrollWidth - st.clientWidth) / 2;
+    } else if (anchorRef.current) {
+      const a = anchorRef.current;
+      anchorRef.current = null;
+      st.scrollTop = layout.tops[a.page] + a.fy * layout.heights[a.page] - a.ay;
+      st.scrollLeft = a.fx * feedW + feedLeft - a.ax;
     }
-  }, [page]);
+    updateRange();
+    updateCurrent();
+  }, [layout, stage.w, feedW, feedLeft, updateRange, updateCurrent]);
 
-  const go = useCallback(
-    (n: number) => {
-      const max = total ?? n;
-      const next = Math.min(Math.max(1, n), max);
-      if (next !== page) onPageChange(next);
+  // Прокрутка → видимый диапазон
+  useEffect(() => {
+    const st = stageRef.current;
+    if (!st) return;
+    let raf = 0;
+    const onScroll = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        updateRange();
+      });
+    };
+    st.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      st.removeEventListener('scroll', onScroll);
+      cancelAnimationFrame(raf);
+    };
+  }, [updateRange]);
+
+  // Индикатор текущей страницы — по IntersectionObserver на отрисованных страницах
+  useEffect(() => {
+    const st = stageRef.current;
+    if (!st) return;
+    const io = new IntersectionObserver(() => updateCurrent(), {
+      root: st,
+      // узкая полоса на 30 % высоты окна: срабатывает, когда через неё проходит граница страницы
+      rootMargin: '-30% 0px -69% 0px',
+      threshold: [0, 1],
+    });
+    st.querySelectorAll('[data-feed-page]').forEach((el) => io.observe(el));
+    return () => io.disconnect();
+  }, [range, layout, updateCurrent]);
+
+  // Сообщать текущую страницу наверх (для ?page=)
+  useEffect(() => {
+    onPageChange(current);
+  }, [current, onPageChange]);
+
+  const setZoom = useCallback((next: number, anchor?: { x: number; y: number }) => {
+    const st = stageRef.current;
+    const z = clampZoom(next);
+    setZoomState((prev) => {
+      if (z === prev) return prev;
+      if (st) anchorRef.current = captureAnchor(anchor?.x ?? st.clientWidth / 2, anchor?.y ?? st.clientHeight * 0.3);
+      rememberedZoom = z;
+      return z;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageAt]);
+  const zoomBy = useCallback(
+    (dir: 1 | -1, anchor?: { x: number; y: number }) => {
+      const prev = rememberedZoom;
+      // шаг 25 %: с «нестандартного» значения (после щипка/Ctrl+колеса) — к ближайшему кратному
+      const z = dir > 0 ? Math.floor(prev / ZOOM_STEP) * ZOOM_STEP + ZOOM_STEP : Math.ceil(prev / ZOOM_STEP) * ZOOM_STEP - ZOOM_STEP;
+      setZoom(z, anchor);
     },
-    [page, total, onPageChange],
+    [setZoom],
+  );
+
+  const goTo = useCallback(
+    (n: number) => {
+      const st = stageRef.current;
+      const page = Math.min(Math.max(1, Math.round(n)), total);
+      if (!st) return;
+      st.scrollTop = layout.tops[page] - PAD / 2;
+      updateRange();
+      setCurrent(page);
+    },
+    [layout, total, updateRange],
   );
 
   // Фокус: при открытии — на кнопку закрытия, при закрытии — вернуть на прежний элемент
@@ -235,7 +261,7 @@ export function ManualViewer({ manual, nodeTitle, page, onPageChange, onClose, o
       if (e.key === 'Tab') {
         const root = dialogRef.current;
         if (!root) return;
-        const f = [...root.querySelectorAll<HTMLElement>('button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])')].filter((el) => el.offsetParent !== null);
+        const f = [...root.querySelectorAll<HTMLElement>('button:not([disabled]), a[href], input, [tabindex]:not([tabindex="-1"])')].filter((el) => el.offsetParent !== null);
         if (!f.length) return;
         const first = f[0];
         const last = f[f.length - 1];
@@ -249,12 +275,13 @@ export function ManualViewer({ manual, nodeTitle, page, onPageChange, onClose, o
         return;
       }
       if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if ((e.target as HTMLElement | null)?.tagName === 'INPUT') return; // ввод номера страницы
       let handled = true;
       if (e.key === '+' || e.key === '=') zoomBy(1);
       else if (e.key === '-' || e.key === '_') zoomBy(-1);
       else if (e.key === '0') setZoom(100);
-      else if (e.key === 'ArrowRight' || e.key === 'PageDown') go(page + 1);
-      else if (e.key === 'ArrowLeft' || e.key === 'PageUp') go(page - 1);
+      else if (e.key === 'ArrowRight' || e.key === 'PageDown') goTo(current + 1);
+      else if (e.key === 'ArrowLeft' || e.key === 'PageUp') goTo(current - 1);
       else handled = false;
       if (handled) {
         e.preventDefault();
@@ -263,9 +290,9 @@ export function ManualViewer({ manual, nodeTitle, page, onPageChange, onClose, o
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, [onClose, zoomBy, setZoom, go, page]);
+  }, [onClose, zoomBy, setZoom, goTo, current]);
 
-  // Ctrl + колесо — масштаб у курсора (обычное колесо — прокрутка)
+  // Ctrl + колесо (и «щипок» на тачпаде — он приходит как wheel с ctrlKey) — масштаб у курсора
   useEffect(() => {
     const st = stageRef.current;
     if (!st) return;
@@ -280,48 +307,63 @@ export function ManualViewer({ manual, nodeTitle, page, onPageChange, onClose, o
     return () => st.removeEventListener('wheel', onWheel);
   }, [setZoom]);
 
-  // Перетаскивание (мышь/палец) и pinch двумя пальцами
-  const pointers = useRef(new Map<number, { x: number; y: number }>());
-  const drag = useRef<{ x: number; y: number; sl: number; st: number } | null>(null);
-  const pinch = useRef<{ d: number; z: number; cx: number; cy: number } | null>(null);
+  // Щипок двумя пальцами (сенсорный экран); прокрутка одним пальцем — нативная
+  useEffect(() => {
+    const st = stageRef.current;
+    if (!st) return;
+    let pinch: { d: number; z: number; x: number; y: number } | null = null;
+    const dist = (t: TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    const onStart = (e: TouchEvent) => {
+      if (e.touches.length !== 2) return;
+      const r = st.getBoundingClientRect();
+      pinch = { d: dist(e.touches), z: rememberedZoom, x: (e.touches[0].clientX + e.touches[1].clientX) / 2 - r.left, y: (e.touches[0].clientY + e.touches[1].clientY) / 2 - r.top };
+    };
+    const onMove = (e: TouchEvent) => {
+      if (!pinch || e.touches.length !== 2) return;
+      e.preventDefault();
+      setZoom(pinch.z * (dist(e.touches) / Math.max(1, pinch.d)), { x: pinch.x, y: pinch.y });
+    };
+    const onEnd = (e: TouchEvent) => {
+      if (e.touches.length < 2) pinch = null;
+    };
+    st.addEventListener('touchstart', onStart, { passive: true });
+    st.addEventListener('touchmove', onMove, { passive: false });
+    st.addEventListener('touchend', onEnd, { passive: true });
+    st.addEventListener('touchcancel', onEnd, { passive: true });
+    return () => {
+      st.removeEventListener('touchstart', onStart);
+      st.removeEventListener('touchmove', onMove);
+      st.removeEventListener('touchend', onEnd);
+      st.removeEventListener('touchcancel', onEnd);
+    };
+  }, [setZoom]);
+
+  // Перетаскивание мышью — панорамирование по обеим осям
+  const drag = useRef<{ id: number; x: number; y: number; sl: number; st: number } | null>(null);
   const [dragging, setDragging] = useState(false);
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    if (e.pointerType !== 'mouse' || e.button !== 0) return;
     const st = stageRef.current!;
-    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    drag.current = { id: e.pointerId, x: e.clientX, y: e.clientY, sl: st.scrollLeft, st: st.scrollTop };
     st.setPointerCapture(e.pointerId);
-    if (pointers.current.size === 2) {
-      const [a, b] = [...pointers.current.values()];
-      const r = st.getBoundingClientRect();
-      pinch.current = { d: Math.hypot(a.x - b.x, a.y - b.y), z: zoom, cx: (a.x + b.x) / 2 - r.left, cy: (a.y + b.y) / 2 - r.top };
-      drag.current = null;
-    } else {
-      drag.current = { x: e.clientX, y: e.clientY, sl: st.scrollLeft, st: st.scrollTop };
-      setDragging(true);
-    }
+    setDragging(true);
+    e.preventDefault();
   };
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!pointers.current.has(e.pointerId)) return;
-    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const d = drag.current;
+    if (!d || d.id !== e.pointerId) return;
     const st = stageRef.current!;
-    if (pinch.current && pointers.current.size >= 2) {
-      const [a, b] = [...pointers.current.values()];
-      const d = Math.hypot(a.x - b.x, a.y - b.y);
-      if (pinch.current.d > 0) setZoom(pinch.current.z * (d / pinch.current.d), { x: pinch.current.cx, y: pinch.current.cy });
-    } else if (drag.current) {
-      st.scrollLeft = drag.current.sl - (e.clientX - drag.current.x);
-      st.scrollTop = drag.current.st - (e.clientY - drag.current.y);
-    }
+    st.scrollLeft = d.sl - (e.clientX - d.x);
+    st.scrollTop = d.st - (e.clientY - d.y);
   };
   const onPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
-    pointers.current.delete(e.pointerId);
-    if (pointers.current.size < 2) pinch.current = null;
-    if (pointers.current.size === 0) {
-      drag.current = null;
-      setDragging(false);
-    }
+    if (drag.current?.id !== e.pointerId) return;
+    drag.current = null;
+    setDragging(false);
   };
 
+  const label = pageLabel(set, current);
+  const currentKind = MANUAL_PAGE_KINDS.find((k) => manual.pages[k.key]?.pdfPage === current)?.key ?? null;
   const titleId = 'mviewer-title';
   const kindBtn = (k: { key: ManualPageKind; title: string }) => {
     const ref = manual.pages[k.key];
@@ -332,15 +374,51 @@ export function ManualViewer({ manual, nodeTitle, page, onPageChange, onClose, o
         className={`mviewer__kind ${currentKind === k.key ? 'is-active' : ''}`}
         disabled={!ref}
         aria-pressed={currentKind === k.key}
-        title={ref ? `${k.title}: с. ${ref.label} (PDF ${ref.pdfPage})` : 'данные из мануала не найдены'}
+        title={ref ? `${k.title}: с. ${ref.label} (стр. ${ref.pdfPage})` : 'данные из мануала не найдены'}
         data-kind={k.key}
-        onClick={() => ref && onPageChange(ref.pdfPage)}
+        onClick={() => ref && goTo(ref.pdfPage)}
       >
         {k.title}
         {ref && <small> {ref.label}</small>}
       </button>
     );
   };
+
+  const pages = [];
+  for (let n = range[0]; n <= range[1]; n++) {
+    const top = layout.tops[n];
+    const h = layout.heights[n];
+    const isBlank = blank.has(n);
+    pages.push(
+      <div
+        key={n}
+        className={`mviewer__page ${isBlank ? 'mviewer__page--blank' : ''}`}
+        data-feed-page={n}
+        style={{
+          top,
+          height: h,
+          backgroundImage: !isBlank && set.thumbs ? `url("${pageImageUrl(set, n, true)}")` : undefined,
+        }}
+      >
+        {isBlank ? (
+          <span className="mviewer__blank-note">стр. {n}: пустая страница скана</span>
+        ) : (
+          <img
+            src={pageImageUrl(set, n)}
+            alt={`Страница ${pageLabel(set, n) ?? n} (стр. ${n})`}
+            loading="lazy"
+            decoding="async"
+            draggable={false}
+            width={pageSize(set, n)[0]}
+            height={pageSize(set, n)[1]}
+          />
+        )}
+        <span className="mviewer__pno" aria-hidden="true">
+          {pageLabel(set, n) ?? '—'} · {n}
+        </span>
+      </div>,
+    );
+  }
 
   return (
     <div className="mviewer" data-testid="manual-viewer">
@@ -350,13 +428,13 @@ export function ManualViewer({ manual, nodeTitle, page, onPageChange, onClose, o
           <div className="mviewer__titles">
             <h2 id={titleId} className="mviewer__title">{nodeTitle}</h2>
             <p className="mviewer__doc">
-              {manual.doc.title}, {manual.doc.docNo}
+              {manual.doc.title}
+              {manual.doc.docNo && <>, {manual.doc.docNo}</>}
               {manual.info.scope && <> · <span className="mviewer__scope">{manual.info.scope}</span></>}
             </p>
-            <p className="mviewer__page" aria-live="polite">
-              Страница мануала <strong data-label>{label ?? '—'}</strong> · PDF <strong data-pdf>{page}</strong>
-              {total ? <> из {total}</> : null}
-              {blank && <span className="mviewer__blank"> · страница в скане пустая</span>}
+            <p className="mviewer__page-ind" aria-live="polite" data-indicator>
+              <strong data-label>{label ?? '—'}</strong> · стр. <strong data-pdf>{current}</strong> из {total}
+              {blank.has(current) && <span className="mviewer__blank"> · пустая страница скана</span>}
             </p>
           </div>
           <button type="button" className="mviewer__close" ref={closeRef} onClick={onClose} aria-label="Закрыть просмотр мануала (Esc)" title="Закрыть (Esc)">
@@ -369,12 +447,33 @@ export function ManualViewer({ manual, nodeTitle, page, onPageChange, onClose, o
             {MANUAL_PAGE_KINDS.map(kindBtn)}
           </div>
           <div className="mviewer__group" aria-label="Страницы">
-            <button type="button" className="mviewer__btn" onClick={() => go(page - 1)} disabled={page <= 1} aria-label="Предыдущая страница" title="Предыдущая страница (←)">
-              ‹
+            <button type="button" className="mviewer__btn mviewer__btn--text" onClick={() => goTo(current - 1)} disabled={current <= 1} aria-label="Предыдущая страница" title="Предыдущая страница (←)" data-prev>
+              ◀ Назад
             </button>
-            <button type="button" className="mviewer__btn" onClick={() => go(page + 1)} disabled={total != null && page >= total} aria-label="Следующая страница" title="Следующая страница (→)">
-              ›
+            <button type="button" className="mviewer__btn mviewer__btn--text" onClick={() => goTo(current + 1)} disabled={current >= total} aria-label="Следующая страница" title="Следующая страница (→)" data-next>
+              Вперёд ▶
             </button>
+            <form
+              className="mviewer__jump"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const n = Number(jump);
+                if (Number.isFinite(n) && n >= 1) goTo(n);
+                setJump('');
+              }}
+            >
+              <input
+                type="number"
+                inputMode="numeric"
+                min={1}
+                max={total}
+                placeholder={String(current)}
+                value={jump}
+                onChange={(e) => setJump(e.target.value)}
+                aria-label={`Перейти к странице (1–${total})`}
+                title={`Перейти к странице (1–${total}), Enter`}
+              />
+            </form>
           </div>
           <div className="mviewer__group" aria-label="Масштаб">
             <button type="button" className="mviewer__btn" onClick={() => zoomBy(-1)} disabled={zoom <= ZOOM_MIN} aria-label="Уменьшить" title="Уменьшить (−)">
@@ -386,14 +485,11 @@ export function ManualViewer({ manual, nodeTitle, page, onPageChange, onClose, o
             <button type="button" className="mviewer__btn" onClick={() => zoomBy(1)} disabled={zoom >= ZOOM_MAX} aria-label="Увеличить" title="Увеличить (+)">
               +
             </button>
-            <button type="button" className={`mviewer__btn mviewer__btn--text ${zoom === 100 ? 'is-active' : ''}`} onClick={() => setZoom(100)} title="По ширине окна (0)">
+            <button type="button" className={`mviewer__btn mviewer__btn--text ${zoom === 100 ? 'is-active' : ''}`} onClick={() => setZoom(100)} title="По ширине окна (0)" data-fit>
               По ширине
             </button>
           </div>
           <div className="mviewer__group mviewer__group--end">
-            <a className="mviewer__btn mviewer__btn--text" href={fileHref} target="_blank" rel="noopener" data-open-pdf>
-              Открыть PDF целиком
-            </a>
             <button type="button" className="mviewer__btn mviewer__btn--text mviewer__btn--card" onClick={onShowCard}>
               Карточка узла
             </button>
@@ -404,29 +500,17 @@ export function ManualViewer({ manual, nodeTitle, page, onPageChange, onClose, o
           className={`mviewer__stage ${dragging ? 'is-dragging' : ''}`}
           ref={stageRef}
           tabIndex={0}
-          aria-label={`Страница ${label ?? page}. Перетаскивание — прокрутка, Ctrl + колесо — масштаб`}
+          aria-label="Лента страниц мануала. Колесо — прокрутка, Ctrl + колесо — масштаб, перетаскивание — сдвиг"
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
           onPointerCancel={onPointerUp}
         >
-          <div className="mviewer__sheet" style={{ width: cssW || undefined, height: cssH || undefined }}>
-            <canvas
-              ref={canvasRef}
-              className="mviewer__canvas"
-              style={{
-                width: cssW || undefined,
-                height: cssH || undefined,
-                visibility: rendered ? 'visible' : 'hidden',
-              }}
-            />
-            {(!doc || (rendering && rendered?.page !== page)) && !error && <div className="mviewer__loading">Загрузка страницы…</div>}
-          </div>
-          {error && (
-            <div className="mviewer__error" role="alert">
-              Не удалось показать страницу ({error}). <a href={fileHref} target="_blank" rel="noopener">Открыть PDF на странице {page}</a>.
+          <div className="mviewer__feed" style={{ width: feedW + 2 * feedLeft, height: layout.height }}>
+            <div className="mviewer__col" style={{ left: feedLeft, width: feedW }}>
+              {pages}
             </div>
-          )}
+          </div>
         </div>
       </div>
     </div>
