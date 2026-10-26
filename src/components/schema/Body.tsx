@@ -25,6 +25,59 @@ export function hoodTopAt(geo: Geometry, x: number): number {
   return h.top;
 }
 
+/** Положение подписи модели на баке. overlay=true — места на баке нет, подпись рисуется шильдиком поверх узлов */
+export function tankBadgeLayout(geo: Geometry): { x: number; y: number; size: number; overlay: boolean } {
+  const { tank: t, p, deckY } = geo;
+  const tankBrand = Math.max(9, Math.min(14, t.w * 0.13));
+  // Подпись модели на баке: по центру бака. У элевированной звёздочки (Cat) обвод гусеницы заходит на бак —
+  // подпись сдвигается вправо, за обвод, но в пределах бака (не под цилиндр рыхлителя и не на батарейный ящик)
+  const y = t.y + t.h * 0.3;
+  const center = { x: t.x + t.w / 2, y, size: tankBrand, overlay: false };
+  if (!geo.rearIdler) return center;
+  const s0 = geo.sprocket;
+  const R = s0.r + geo.trackT + 3; // наружный обвод гусеницы + 1
+  const L = geo.ripperLift;
+  const segDist = (px: number, py: number) => {
+    const dx = L.x2 - L.x1;
+    const dy = L.y2 - L.y1;
+    const k = Math.max(0, Math.min(1, ((px - L.x1) * dx + (py - L.y1) * dy) / (dx * dx + dy * dy || 1)));
+    return Math.hypot(px - (L.x1 + k * dx), py - (L.y1 + k * dy));
+  };
+  const free = (cx: number, y: number, size: number) => {
+    const w = String(p.badge ?? '').length * size * 0.72 + 2;
+    if (cx - w / 2 < t.x + 3 || cx + w / 2 > t.x + t.w - 3) return false;
+    for (let i = 0; i <= 4; i++)
+      for (let j = 0; j <= 2; j++) {
+        const px = cx - w / 2 + (w * i) / 4;
+        const py = y - size + (size * j) / 2;
+        if (Math.hypot(px - s0.cx, py - s0.cy) < R || segDist(px, py) < 10.5) return false;
+      }
+    return true;
+  };
+  // ближе к центру бака и как можно крупнее; по высоте — между разметкой и батарейным ящиком
+  const yMax = Math.min(y, deckY - 40);
+  for (let size = tankBrand; size >= 8; size -= 0.5)
+    for (let yy = yMax; yy >= t.y + 11 + size; yy -= 1)
+      for (let d = 0; d <= t.w / 2; d += 1)
+        for (const cx of [t.x + t.w / 2 + d, t.x + t.w / 2 - d]) if (free(cx, yy, size)) return { x: cx, y: yy, size, overlay: false };
+  // Свободного места нет (бак целиком за обводом гусеницы и цилиндром) — шильдик поверх узлов
+  const size = Math.max(9, tankBrand - 2);
+  return { x: t.x + t.w / 2, y: t.y + 12 + size, size, overlay: true };
+}
+
+/** Шильдик модели поверх гусеницы/цилиндров — только когда на баке нет свободного места */
+export function TankBadgeOverlay({ geo }: { geo: Geometry }) {
+  const b = tankBadgeLayout(geo);
+  if (!b.overlay || !geo.p.badge) return null;
+  const w = String(geo.p.badge).length * b.size * 0.72 + 8;
+  return (
+    <g className="decor decor__plate" aria-hidden="true" pointerEvents="none">
+      <rect x={b.x - w / 2} y={b.y - b.size - 2} width={w} height={b.size + 5} rx={2} fill="#1a1a1a" stroke="#f2b705" strokeWidth={1} />
+      <text className="decor__model" x={b.x} y={b.y} style={{ fontSize: b.size, fill: '#f2b705' }}>{geo.p.badge}</text>
+    </g>
+  );
+}
+
 /** Некликабельная «оболочка» машины: корпус, капот, кабина, бак, выхлоп и т. д. */
 export function Body({ geo, anim = null }: { geo: Geometry; anim?: AnimFrame | null }) {
   const { hood: h, cab: c, tank: t, fender: f, p, deckY, hullBottom, K } = geo;
@@ -93,7 +146,7 @@ export function Body({ geo, anim = null }: { geo: Geometry; anim?: AnimFrame | n
     if (!p.animExtras || !anim?.levers) return { left: 0, right: 0 };
     return { left: anim.levers.travel * 16, right: anim.levers.implement * 16 };
   })();
-  const tankBrand = Math.max(9, Math.min(14, t.w * 0.13));
+  const tankBadge = tankBadgeLayout(geo);
 
   return (
     <g aria-hidden="true" className="decor">
@@ -182,7 +235,7 @@ export function Body({ geo, anim = null }: { geo: Geometry; anim?: AnimFrame | n
         <polygon points={`${t.x + 4},${t.y} ${t.x + 4 + tx},${t.y + ty} ${t.x + t.w + tx - 2},${t.y + ty} ${t.x + t.w - 2},${t.y}`} fill="url(#kd-top)" stroke="#8a5d00" />
         <rect x={t.x + 10} y={t.y + ty - 6} width={12} height={7} rx={2} fill="#2b2f33" />
         <rect x={t.x + 3} y={t.y + 4} width={t.w - 6} height={6} fill="url(#kd-hazard)" opacity={0.9} />
-        <text className="decor__model" x={t.x + t.w / 2} y={t.y + t.h * 0.3} style={{ fontSize: tankBrand }}>{p.badge}</text>
+        {!tankBadge.overlay && <text className="decor__model" x={tankBadge.x} y={tankBadge.y} style={{ fontSize: tankBadge.size }}>{p.badge}</text>}
 
         {/* Крылья над гусеницами */}
         <rect x={f.x} y={f.y - f.h * 0.4} width={f.w} height={f.h} rx={3} fill="url(#kd-top)" stroke="#8a5d00" />

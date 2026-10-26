@@ -3,7 +3,7 @@ import { buildGeometry, buildNodes, VIEWBOX, type Geometry } from '../data/layou
 import type { AnimFrame } from '../anim/stages';
 import { SYSTEMS } from '../data/systems';
 import type { BulldozerModel, NodeId, Shape, SystemId } from '../types';
-import { Body, FarSide } from './schema/Body';
+import { Body, FarSide, TankBadgeOverlay } from './schema/Body';
 import { CALLOUT_H, placeCallouts, type CalloutItem } from './schema/Callouts';
 import { SchemaDefs } from './schema/Defs';
 import { NodeArt } from './schema/NodeArt';
@@ -141,6 +141,7 @@ export function BulldozerSchema({ model, selectedId, activeSystem, onSelect, ani
               </g>
             </g>
           ))}
+          <TankBadgeOverlay geo={geo} />
           {/* Проход 2: области клика поверх всех рисунков; крупные узлы снизу, мелкие сверху —
               так мелкий узел не перекрывается соседним крупным (раньше рисунок одного узла мог закрыть другой) */}
           {hitOrder.map((n) => {
