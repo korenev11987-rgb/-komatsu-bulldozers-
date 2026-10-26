@@ -9,12 +9,13 @@ import type { ManualDoc } from './types';
  * Страницы мануала, которые открываются по клику на узел схемы.
  * ТОЛЬКО проверенные страницы (номер PDF и колонтитул сверены по скану) — ничего не угадывать.
  *   disassembly — снятие/разборка (глава 30), assembly — установка/сборка (глава 30),
- *   specs — нормы: стандартные значения (главы 10/20) или стандарт техобслуживания (глава 40).
+ *   specs — нормы: стандартные значения (главы 10/20) или стандарт техобслуживания (глава 40),
+ *   catalog — страница группы каталога запчастей (Parts Manual); у документа задаётся kinds: ['catalog'].
  * Чтобы добавить модель: новый ключ в MANUAL_PAGES с doc (id из manuals.ts; для doc нужен набор изображений в manualImages.ts)
  * и картой nodes; при желании — pageLabel(pdfPage) для подписи страниц при листании.
  */
 
-export type ManualPageKind = 'disassembly' | 'assembly' | 'specs';
+export type ManualPageKind = 'disassembly' | 'assembly' | 'specs' | 'catalog';
 
 export interface ManualPage {
   /** Номер страницы в PDF-файле (1…N) */
@@ -31,6 +32,8 @@ export interface DocManualPages {
   doc: string;
   /** Видимая пометка, к какой модели относятся данные документа */
   scope?: string;
+  /** Разделы-кнопки просмотра для этого документа (по умолчанию — разборка/сборка/нормы) */
+  kinds?: readonly ManualPageKind[];
   nodes: Partial<Record<NodeId, NodeManualPages>>;
 }
 
@@ -48,6 +51,16 @@ export const MANUAL_PAGE_KINDS: { key: ManualPageKind; title: string }[] = [
   { key: 'assembly', title: 'Сборка' },
   { key: 'specs', title: 'Нормы' },
 ];
+
+/** Все разделы, включая «Каталог» (каталоги запчастей) */
+export const ALL_PAGE_KINDS: { key: ManualPageKind; title: string }[] = [...MANUAL_PAGE_KINDS, { key: 'catalog', title: 'Каталог' }];
+
+/** Кнопки разделов для документа: заданные у документа или стандартные (разборка/сборка/нормы) */
+export function docKinds(entry: { kinds?: readonly ManualPageKind[] }): { key: ManualPageKind; title: string }[] {
+  return entry.kinds ? ALL_PAGE_KINDS.filter((k) => entry.kinds!.includes(k.key)) : MANUAL_PAGE_KINDS;
+}
+
+const hasPages = (pages: NodeManualPages | undefined): pages is NodeManualPages => !!pages && ALL_PAGE_KINDS.some((k) => pages[k.key]);
 
 const p = (pdfPage: number, label: string): ManualPage => ({ pdfPage, label });
 
@@ -169,6 +182,7 @@ export interface NodeDocManual {
   /** Страницы узла (может быть пусто — документ открывается с первой страницы) */
   pages: NodeManualPages;
   scope?: string;
+  kinds?: readonly ManualPageKind[];
 }
 
 export interface NodeManual extends NodeDocManual {
@@ -179,22 +193,23 @@ export interface NodeManual extends NodeDocManual {
   docs: NodeDocManual[];
 }
 
-/** Страницы мануала узла или null, если в основном документе нет ни одной проверенной страницы */
+/**
+ * Страницы мануала узла или null, если ни в одном документе модели нет проверенной страницы узла.
+ * Основной документ — первый по порядку (основной, затем extraDocs), в котором у узла есть страница.
+ */
 export function getNodeManual(model: ModelId, node: NodeId): NodeManual | null {
   const info = MANUAL_PAGES[model];
-  const pages = info?.nodes[node];
-  if (!info || !pages || !MANUAL_PAGE_KINDS.some((k) => pages[k.key])) return null;
-  const doc = MANUALS[info.doc];
-  const images = PAGE_IMAGE_SETS[info.doc];
-  if (!doc || !images) return null;
-  const primary: NodeDocManual = { doc, images, pages, scope: info.scope };
-  const docs = [primary];
-  for (const x of info.extraDocs ?? []) {
+  if (!info) return null;
+  const docs: NodeDocManual[] = [];
+  for (const x of [info, ...(info.extraDocs ?? [])]) {
     const d = MANUALS[x.doc];
     const im = PAGE_IMAGE_SETS[x.doc];
-    if (d && im) docs.push({ doc: d, images: im, pages: x.nodes[node] ?? {}, scope: x.scope });
+    if (d && im) docs.push({ doc: d, images: im, pages: x.nodes[node] ?? {}, scope: x.scope, kinds: x.kinds });
   }
-  return { model, node, ...primary, info, docs };
+  const i = docs.findIndex((d) => hasPages(d.pages));
+  if (i < 0) return null;
+  if (i > 0) docs.unshift(...docs.splice(i, 1));
+  return { model, node, ...docs[0], info, docs };
 }
 
 /** Документ просмотра по id (или основной) */
@@ -202,7 +217,7 @@ export function nodeDoc(manual: NodeManual, docId: string | null | undefined): N
   return manual.docs.find((d) => d.doc.id === docId) ?? manual.docs[0];
 }
 
-/** Первый доступный раздел: разборка → сборка → нормы */
+/** Первый доступный раздел: разборка → сборка → нормы → каталог */
 export function firstManualKind(pages: NodeManualPages): ManualPageKind | null {
-  return MANUAL_PAGE_KINDS.find((k) => pages[k.key])?.key ?? null;
+  return ALL_PAGE_KINDS.find((k) => pages[k.key])?.key ?? null;
 }

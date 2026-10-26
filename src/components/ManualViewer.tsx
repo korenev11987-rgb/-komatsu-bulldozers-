@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { pageImageUrl, pageLabel, pageSize } from '../data/repair/manualImages';
-import { MANUAL_PAGE_KINDS, nodeDoc, type ManualPageKind, type NodeManual } from '../data/repair/manualPages';
+import { docKinds, nodeDoc, type ManualPageKind, type NodeManual } from '../data/repair/manualPages';
 import { MANUALS } from '../data/repair/manuals';
 import type { BreakdownRef, PartBreakdownData } from '../data/repair/types';
 import { GLOSSARIES } from '../data/manuals/glossary';
@@ -439,7 +439,8 @@ export function ManualViewer({ manual, nodeTitle, initialPage, onPageChange, onC
   };
 
   const label = pageLabel(set, current);
-  const currentKind = MANUAL_PAGE_KINDS.find((k) => entry.pages[k.key]?.pdfPage === current)?.key ?? null;
+  const kinds = docKinds(entry);
+  const currentKind = kinds.find((k) => entry.pages[k.key]?.pdfPage === current)?.key ?? null;
   const openRef = (r: BreakdownRef) => {
     if (r.doc === entry.doc.id) goTo(r.pdfPage);
     else if (manual.docs.some((d) => d.doc.id === r.doc)) onDocChange?.(r.doc, r.pdfPage);
@@ -570,7 +571,7 @@ export function ManualViewer({ manual, nodeTitle, initialPage, onPageChange, onC
             </label>
           )}
           <div className="mviewer__group" aria-label="Раздел">
-            {MANUAL_PAGE_KINDS.map(kindBtn)}
+            {kinds.map(kindBtn)}
           </div>
           <div className="mviewer__group" aria-label="Страницы">
             <button type="button" className="mviewer__btn mviewer__btn--text" onClick={() => goTo(current - 1)} disabled={current <= 1} aria-label="Предыдущая страница" title="Предыдущая страница (←)" data-prev>

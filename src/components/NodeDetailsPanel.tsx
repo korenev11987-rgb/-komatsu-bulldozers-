@@ -138,7 +138,13 @@ export function NodeDetailsPanel({ model, node, onClose, manual = null, onOpenMa
 
       <div id="tabpanel" role="tabpanel" aria-labelledby={`tab-${tab}`} className="tabpanel">
         {current ? (
-          <SectionView title={current.title} section={card[current.key]} ordered={current.ordered} mfr={mfr} />
+          <SectionView
+            title={current.title}
+            section={card[current.key]}
+            ordered={current.ordered}
+            mfr={mfr}
+            onOpenRef={manual && onOpenRef ? (r) => (manual.docs.some((d) => d.doc.id === r.doc) ? onOpenRef(r) : undefined) : undefined}
+          />
         ) : (
           <>
             <p className="panel__desc">{node.description}</p>
@@ -166,13 +172,26 @@ export function NodeDetailsPanel({ model, node, onClose, manual = null, onOpenMa
       <ModelDocs modelId={model.id} compact />
 
       <p className="panel__disclaimer">
-        Перед работами сверяйтесь с официальным {mfr === 'Caterpillar' ? 'сервисным руководством Caterpillar (Cat SIS)' : <>Shop Manual / Operation &amp; Maintenance Manual Komatsu</>} для серийного номера вашей машины. Каталожные номера запчастей не приводятся.
+        Перед работами сверяйтесь с официальным {mfr === 'Caterpillar' ? 'сервисным руководством Caterpillar (Cat SIS)' : <>Shop Manual / Operation &amp; Maintenance Manual Komatsu</>} для серийного номера вашей машины.{' '}
+        {mfr === 'Caterpillar' ? 'Каталожные номера (P/N) — из Parts Manual Caterpillar для указанного каталога и диапазона серийных номеров; перед заказом сверяйте с дилером.' : 'Каталожные номера запчастей не приводятся.'}
       </p>
     </aside>
   );
 }
 
-function SectionView({ title, section, ordered, mfr = 'Komatsu' }: { title: string; section: RepairSection; ordered: boolean; mfr?: string }) {
+function SectionView({
+  title,
+  section,
+  ordered,
+  mfr = 'Komatsu',
+  onOpenRef,
+}: {
+  title: string;
+  section: RepairSection;
+  ordered: boolean;
+  mfr?: string;
+  onOpenRef?: (ref: BreakdownRef) => void;
+}) {
   if (section.status === 'not-found') {
     return (
       <section className="rsec">
@@ -200,6 +219,23 @@ function SectionView({ title, section, ordered, mfr = 'Komatsu' }: { title: stri
         ))}
       </List>
       <Cite refs={section.source} />
+      {section.blocks?.map((b, i) => (
+        <div className="rsec__block" key={i} data-parts-block={b.open?.doc}>
+          <h4 className="rsec__block-title">{b.title}</h4>
+          {b.scope && <p className="rsec__scope">{b.scope}</p>}
+          {b.open && onOpenRef && (
+            <button type="button" className="rsec__open" data-open-page={b.open.pdfPage} onClick={() => onOpenRef(b.open!)}>
+              Полный список в каталоге — с. {b.open.label}
+            </button>
+          )}
+          <ul className="facts facts--parts">
+            {b.items.map((it, j) => (
+              <li key={j}>{it}</li>
+            ))}
+          </ul>
+          <Cite refs={b.source} />
+        </div>
+      ))}
       {section.extra && (
         <div className="rsec__extra">
           <h4 className="rsec__extra-title">{section.extra.title}</h4>
