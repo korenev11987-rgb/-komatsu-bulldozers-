@@ -76,7 +76,9 @@ export function Markdown({ text }: { text: string }) {
         items.push(item);
       }
       const L = ordered ? 'ol' : 'ul';
-      blocks.push(<L key={k++}>{items.map((t, j) => <li key={j}>{withBreaks(t)}</li>)}</L>);
+      // номер первого пункта из исходника: пункты, разделённые пустыми строками или примечаниями, не сбрасываются на «1.»
+      const start = ordered ? parseInt(l.trim(), 10) : undefined;
+      blocks.push(<L key={k++} start={start !== undefined && start !== 1 ? start : undefined}>{items.map((t, j) => <li key={j}>{withBreaks(t)}</li>)}</L>);
       continue;
     }
     if (/^>\s?/.test(l)) {
