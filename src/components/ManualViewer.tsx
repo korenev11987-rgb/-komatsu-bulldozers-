@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { pageImageUrl, pageLabel, pageSize } from '../data/repair/manualImages';
-import { MANUAL_PAGE_KINDS, type ManualPageKind, type NodeManual } from '../data/repair/manualPages';
+import { MANUAL_PAGE_KINDS, nodeDoc, type ManualPageKind, type NodeManual } from '../data/repair/manualPages';
+import { MANUALS } from '../data/repair/manuals';
+import type { BreakdownRef, PartBreakdownData } from '../data/repair/types';
+import { GLOSSARIES } from '../data/manuals/glossary';
+import { PartBreakdown } from './PartBreakdown';
 
 /*
  * Просмотр мануала — непрерывная вертикальная лента изображений страниц (без PDF).
@@ -25,6 +29,15 @@ const PAD = 12;
 const GAP = 12;
 /** Сколько страниц сверх видимых держать в DOM с каждой стороны */
 const OVERSCAN = 2;
+/** Показ расшифровок EN→RU (выключено по умолчанию, запоминается) */
+const GLOSSARY_KEY = 'mviewer.glossary';
+const readGlossaryPref = () => {
+  try {
+    return localStorage.getItem(GLOSSARY_KEY) === '1';
+  } catch {
+    return false;
+  }
+};
 
 interface Props {
   manual: NodeManual;
@@ -35,6 +48,12 @@ interface Props {
   onPageChange: (pdfPage: number) => void;
   onClose: () => void;
   onShowCard: () => void;
+  /** Открытый документ (id из manuals.ts); null — основной */
+  docId?: string | null;
+  /** Переключить документ (и открыть его на странице page или на странице узла) */
+  onDocChange?: (docId: string, page?: number) => void;
+  /** Разбор узла «люди · время · инструмент» */
+  breakdown?: PartBreakdownData;
 }
 
 interface Anchor {
@@ -46,8 +65,21 @@ interface Anchor {
   fx: number;
 }
 
-export function ManualViewer({ manual, nodeTitle, initialPage, onPageChange, onClose, onShowCard }: Props) {
-  const set = manual.images;
+export function ManualViewer({ manual, nodeTitle, initialPage, onPageChange, onClose, onShowCard, docId, onDocChange, breakdown }: Props) {
+  const entry = nodeDoc(manual, docId);
+  const set = entry.images;
+  const glossary = GLOSSARIES[entry.doc.id];
+  const [showGlossary, setShowGlossaryState] = useState(readGlossaryPref);
+  const setShowGlossary = (v: boolean) => {
+    setShowGlossaryState(v);
+    if (!v) setGlossPage(null);
+    try {
+      localStorage.setItem(GLOSSARY_KEY, v ? '1' : '0');
+    } catch {
+      /* без хранилища — только на время сеанса */
+    }
+  };
+  const [glossPage, setGlossPage] = useState<number | null>(null);
   const total = set.pageCount;
   const dialogRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -343,6 +375,7 @@ export function ManualViewer({ manual, nodeTitle, initialPage, onPageChange, onC
   const [dragging, setDragging] = useState(false);
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.pointerType !== 'mouse' || e.button !== 0) return;
+    if ((e.target as HTMLElement).closest('button, a')) return; // кнопки на странице (расшифровка)
     const st = stageRef.current!;
     drag.current = { id: e.pointerId, x: e.clientX, y: e.clientY, sl: st.scrollLeft, st: st.scrollTop };
     st.setPointerCapture(e.pointerId);
@@ -363,10 +396,15 @@ export function ManualViewer({ manual, nodeTitle, initialPage, onPageChange, onC
   };
 
   const label = pageLabel(set, current);
-  const currentKind = MANUAL_PAGE_KINDS.find((k) => manual.pages[k.key]?.pdfPage === current)?.key ?? null;
+  const currentKind = MANUAL_PAGE_KINDS.find((k) => entry.pages[k.key]?.pdfPage === current)?.key ?? null;
+  const openRef = (r: BreakdownRef) => {
+    if (r.doc === entry.doc.id) goTo(r.pdfPage);
+    else if (manual.docs.some((d) => d.doc.id === r.doc)) onDocChange?.(r.doc, r.pdfPage);
+  };
+  const glossEntries = glossPage != null ? glossary?.pages[glossPage] : undefined;
   const titleId = 'mviewer-title';
   const kindBtn = (k: { key: ManualPageKind; title: string }) => {
-    const ref = manual.pages[k.key];
+    const ref = entry.pages[k.key];
     return (
       <button
         key={k.key}
@@ -413,6 +451,18 @@ export function ManualViewer({ manual, nodeTitle, initialPage, onPageChange, onC
             height={pageSize(set, n)[1]}
           />
         )}
+        {showGlossary && glossary?.pages[n] && (
+          <button
+            type="button"
+            className={`mviewer__gloss-badge ${glossPage === n ? 'is-active' : ''}`}
+            onClick={() => setGlossPage((p) => (p === n ? null : n))}
+            aria-pressed={glossPage === n}
+            aria-label={`Расшифровка английских подписей страницы ${n}: ${glossary.pages[n].length}`}
+            data-gloss-badge={n}
+          >
+            Расшифровка EN→RU ({glossary.pages[n].length})
+          </button>
+        )}
         <span className="mviewer__pno" aria-hidden="true">
           {pageLabel(set, n) ?? '—'} · {n}
         </span>
@@ -428,9 +478,9 @@ export function ManualViewer({ manual, nodeTitle, initialPage, onPageChange, onC
           <div className="mviewer__titles">
             <h2 id={titleId} className="mviewer__title">{nodeTitle}</h2>
             <p className="mviewer__doc">
-              {manual.doc.title}
-              {manual.doc.docNo && <>, {manual.doc.docNo}</>}
-              {manual.info.scope && <> · <span className="mviewer__scope">{manual.info.scope}</span></>}
+              {entry.doc.title}
+              {entry.doc.docNo && <>, {entry.doc.docNo}</>}
+              {entry.scope && <> · <span className="mviewer__scope">{entry.scope}</span></>}
             </p>
             <p className="mviewer__page-ind" aria-live="polite" data-indicator>
               <strong data-label>{label ?? '—'}</strong> · стр. <strong data-pdf>{current}</strong> из {total}
@@ -443,6 +493,24 @@ export function ManualViewer({ manual, nodeTitle, initialPage, onPageChange, onC
         </header>
 
         <div className="mviewer__toolbar" role="toolbar" aria-label="Просмотр мануала">
+          {manual.docs.length > 1 && (
+            <label className="mviewer__docsel">
+              <span>Документ</span>
+              <select
+                value={entry.doc.id}
+                onChange={(e) => onDocChange?.(e.target.value)}
+                data-doc-switch
+                aria-label="Документ модели"
+              >
+                {manual.docs.map((d) => (
+                  <option key={d.doc.id} value={d.doc.id}>
+                    {d.doc.docNo ? `${d.doc.docNo} — ` : ''}
+                    {d.doc.title} ({d.images.pageCount} стр.)
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <div className="mviewer__group" aria-label="Раздел">
             {MANUAL_PAGE_KINDS.map(kindBtn)}
           </div>
@@ -489,6 +557,12 @@ export function ManualViewer({ manual, nodeTitle, initialPage, onPageChange, onC
               По ширине
             </button>
           </div>
+          {glossary && (
+            <label className="mviewer__gloss-toggle" title="Плашки с переводом английских подписей на страницах">
+              <input type="checkbox" checked={showGlossary} onChange={(e) => setShowGlossary(e.target.checked)} data-gloss-toggle />
+              Показывать расшифровки
+            </label>
+          )}
           <div className="mviewer__group mviewer__group--end">
             <button type="button" className="mviewer__btn mviewer__btn--text mviewer__btn--card" onClick={onShowCard}>
               Карточка узла
@@ -496,6 +570,17 @@ export function ManualViewer({ manual, nodeTitle, initialPage, onPageChange, onC
           </div>
         </div>
 
+        {breakdown && (
+          <PartBreakdown
+            data={breakdown}
+            variant="viewer"
+            title="Разбор: люди · время · инструмент"
+            docInfo={(id) => MANUALS[id]}
+            onOpenRef={openRef}
+          />
+        )}
+
+        <div className="mviewer__body">
         <div
           className={`mviewer__stage ${dragging ? 'is-dragging' : ''}`}
           ref={stageRef}
@@ -511,6 +596,41 @@ export function ManualViewer({ manual, nodeTitle, initialPage, onPageChange, onC
               {pages}
             </div>
           </div>
+        </div>
+        {glossEntries && glossPage != null && (
+          <aside className="mviewer__gloss" aria-label={`Расшифровка EN→RU, стр. ${glossPage}`} data-gloss-panel={glossPage}>
+            <header className="mviewer__gloss-head">
+              <strong>
+                Расшифровка EN→RU · с. {pageLabel(set, glossPage) ?? '—'}, стр. {glossPage}
+                {glossary?.kinds?.[glossPage] && <> · {glossary.kinds[glossPage]}</>}
+              </strong>
+              <button type="button" className="mviewer__btn" onClick={() => setGlossPage(null)} aria-label="Закрыть расшифровку">
+                ×
+              </button>
+            </header>
+            <div className="mviewer__gloss-scroll">
+              <table className="mviewer__gloss-table">
+                <thead>
+                  <tr>
+                    <th scope="col">English</th>
+                    <th scope="col">Русский</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {glossEntries.map((g, i) => (
+                    <tr key={i}>
+                      <td lang="en">{g.en}</td>
+                      <td>
+                        {g.ru}
+                        {g.note && <small className="mviewer__gloss-note">{g.note}</small>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </aside>
+        )}
         </div>
       </div>
     </div>

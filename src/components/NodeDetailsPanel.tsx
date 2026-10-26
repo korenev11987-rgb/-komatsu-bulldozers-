@@ -4,6 +4,8 @@ import { SYSTEMS } from '../data/systems';
 import { getRepairCard, MANUALS } from '../data/repair';
 import { manualPageUrl, type ManualRef, type RepairSection, type SectionKey } from '../data/repair/types';
 import type { NodeManual } from '../data/repair/manualPages';
+import type { BreakdownRef, PartBreakdownData } from '../data/repair/types';
+import { PartBreakdown } from './PartBreakdown';
 import type { BulldozerModel, NodeInfo } from '../types';
 
 interface Props {
@@ -13,6 +15,10 @@ interface Props {
   /** Проверенные страницы мануала узла (null — страниц нет) */
   manual?: NodeManual | null;
   onOpenManual?: () => void;
+  /** Разбор узла «люди · время · инструмент» (только данные мануала) */
+  breakdown?: PartBreakdownData | null;
+  /** Открыть страницу-источник разбора в просмотре мануала */
+  onOpenRef?: (ref: BreakdownRef) => void;
 }
 
 type TabKey = 'overview' | SectionKey;
@@ -24,7 +30,7 @@ const SECTIONS: { key: SectionKey; title: string; tab: string; ordered: boolean 
   { key: 'repair', title: 'Как чинить: обслуживание и проверки', tab: 'Ремонт и ТО', ordered: false },
 ];
 
-export function NodeDetailsPanel({ model, node, onClose, manual = null, onOpenManual }: Props) {
+export function NodeDetailsPanel({ model, node, onClose, manual = null, onOpenManual, breakdown = null, onOpenRef }: Props) {
   const [tab, setTab] = useState<TabKey>('repair');
   const titleRef = useRef<HTMLHeadingElement>(null);
 
@@ -83,6 +89,9 @@ export function NodeDetailsPanel({ model, node, onClose, manual = null, onOpenMa
         {node.title}
       </h2>
       <p className="panel__model">{model.fullName}</p>
+      {breakdown && !(manual && onOpenManual) && (
+        <PartBreakdown key={`${model.id}:${node.id}`} data={breakdown} defaultOpen docInfo={(id) => MANUALS[id]} />
+      )}
       {manual && onOpenManual ? (
         <button type="button" className="manual-open" onClick={onOpenManual} data-open-manual>
           <span className="manual-open__icon" aria-hidden="true">PDF</span>
@@ -94,6 +103,14 @@ export function NodeDetailsPanel({ model, node, onClose, manual = null, onOpenMa
           <span className="src-badge src-badge--none">данные из мануала не найдены</span>
           <span className="manual-missing__text">страница мануала для этого узла не привязана — просмотр мануала недоступен</span>
         </p>
+      )}
+      {breakdown && manual && onOpenManual && (
+        <PartBreakdown
+          key={`${model.id}:${node.id}`}
+          data={breakdown}
+          docInfo={(id) => MANUALS[id]}
+          onOpenRef={onOpenRef && ((r) => (manual.docs.some((d) => d.doc.id === r.doc) ? onOpenRef(r) : undefined))}
+        />
       )}
       <p className={`src-summary ${found ? 'src-summary--ok' : 'src-summary--none'}`}>
         {found ? `Данные из мануала: ${found} из ${SECTIONS.length} разделов` : 'Данные из мануала не найдены ни для одного раздела'}

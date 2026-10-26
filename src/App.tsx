@@ -8,7 +8,8 @@ import { Legend } from './components/Legend';
 import { ModelSwitcher } from './components/ModelSwitcher';
 import { NodeDetailsPanel } from './components/NodeDetailsPanel';
 import { ManualViewer } from './components/ManualViewer';
-import { firstManualKind, getNodeManual } from './data/repair/manualPages';
+import { firstManualKind, getNodeManual, nodeDoc } from './data/repair/manualPages';
+import { getBreakdown } from './data/repair/breakdown';
 import { MODELS, MODEL_ORDER } from './data/models';
 import type { ModelId, NodeId, SystemId } from './types';
 
@@ -18,6 +19,8 @@ export default function App() {
   const [activeSystem, setActiveSystem] = useState<SystemId | null>(null);
   /** Открытый просмотр мануала: страница PDF (узел — selectedId) */
   const [viewerPage, setViewerPage] = useState<number | null>(() => readUrl().page);
+  /** Документ в просмотре (null — основной документ модели) */
+  const [viewerDoc, setViewerDoc] = useState<string | null>(() => readUrl().doc);
 
   const model = MODELS[modelId];
   const anim = useWorkAnimation();
@@ -35,14 +38,19 @@ export default function App() {
   const node = selectedId ? model.nodes[selectedId] : null;
   const nodeManual = useMemo(() => (selectedId ? getNodeManual(modelId, selectedId) : null), [modelId, selectedId]);
   const viewerOpen = viewerPage != null && nodeManual != null;
+  const breakdown = useMemo(() => (selectedId ? getBreakdown(modelId, selectedId) : null), [modelId, selectedId]);
+  const activeDoc = nodeManual ? nodeDoc(nodeManual, viewerDoc) : null;
 
   // Состояние синхронизируется с адресной строкой: ?model=D475&node=engine
   useEffect(() => {
     const params = new URLSearchParams({ model: modelId });
     if (selectedId) params.set('node', selectedId);
-    if (selectedId && viewerOpen) params.set('page', String(viewerPage));
+    if (selectedId && viewerOpen) {
+      if (activeDoc && nodeManual && activeDoc !== nodeManual.docs[0]) params.set('doc', activeDoc.doc.id);
+      params.set('page', String(viewerPage));
+    }
     window.history.replaceState(null, '', `?${params.toString()}`);
-  }, [modelId, selectedId, viewerOpen, viewerPage]);
+  }, [modelId, selectedId, viewerOpen, viewerPage, activeDoc, nodeManual]);
 
   // Смена модели или узла без страниц мануала закрывает просмотр
   useEffect(() => {
@@ -55,6 +63,7 @@ export default function App() {
   const handleClose = useCallback(() => {
     setSelectedId(null);
     setViewerPage(null);
+    setViewerDoc(null);
   }, []);
 
   /** Открыть мануал узла на первом доступном разделе (разборка → сборка → нормы) */
@@ -64,6 +73,7 @@ export default function App() {
       const kind = nm && firstManualKind(nm.pages);
       if (!nm || !kind) return false;
       setSelectedId(id); // карточка доступна за просмотром и после него
+      setViewerDoc(null);
       setViewerPage(nm.pages[kind]!.pdfPage);
       return true;
     },
@@ -75,6 +85,7 @@ export default function App() {
     (id: NodeId) => {
       if (openManual(id)) return;
       setViewerPage(null);
+      setViewerDoc(null);
       handleSelect(id);
     },
     [openManual, handleSelect],
@@ -132,20 +143,38 @@ export default function App() {
           node={node}
           onClose={handleClose}
           manual={nodeManual}
+          breakdown={breakdown}
+          onOpenRef={(r) => {
+            if (!node || !nodeManual?.docs.some((d) => d.doc.id === r.doc)) return;
+            setViewerDoc(r.doc);
+            setViewerPage(r.pdfPage);
+          }}
           onOpenManual={node ? () => openManual(node.id) : undefined}
         />
       </main>
 
       {viewerOpen && node && nodeManual && (
         <ManualViewer
-          key={`${modelId}:${node.id}`}
+          key={`${modelId}:${node.id}:${activeDoc?.doc.id}`}
           manual={nodeManual}
+          docId={activeDoc?.doc.id}
+          breakdown={breakdown ?? undefined}
+          onDocChange={(id, page) => {
+            const d = nodeDoc(nodeManual, id);
+            const kind = firstManualKind(d.pages);
+            setViewerDoc(id);
+            setViewerPage(page ?? (kind ? d.pages[kind]!.pdfPage : 1));
+          }}
           nodeTitle={node.title}
           initialPage={viewerPage ?? 1}
           onPageChange={setViewerPage}
-          onClose={() => setViewerPage(null)}
+          onClose={() => {
+            setViewerPage(null);
+            setViewerDoc(null);
+          }}
           onShowCard={() => {
             setViewerPage(null);
+            setViewerDoc(null);
             requestAnimationFrame(() => document.querySelector<HTMLElement>('.panel--card .panel__close')?.focus());
           }}
         />
@@ -158,7 +187,7 @@ export default function App() {
   );
 }
 
-function readUrl(): { model: ModelId; node: NodeId | null; page: number | null } {
+function readUrl(): { model: ModelId; node: NodeId | null; page: number | null; doc: string | null } {
   const params = new URLSearchParams(window.location.search);
   const m = params.get('model');
   const model: ModelId = m && m in MODELS ? (m as ModelId) : 'D155';
@@ -167,5 +196,8 @@ function readUrl(): { model: ModelId; node: NodeId | null; page: number | null }
   // ?page=N — открыть просмотр мануала на странице PDF (только если у узла есть страницы)
   const pg = Number(params.get('page'));
   const page = node && Number.isInteger(pg) && pg > 0 && getNodeManual(model, node) ? pg : null;
-  return { model, node, page };
+  const nm = node ? getNodeManual(model, node) : null;
+  const d = params.get('doc');
+  const doc = nm && d && nm.docs.some((x) => x.doc.id === d) ? d : null;
+  return { model, node, page: page && nm ? Math.min(page, nodeDoc(nm, doc).images.pageCount) : page, doc };
 }

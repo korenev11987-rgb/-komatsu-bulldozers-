@@ -5,6 +5,13 @@
  * сгенерировать манифест (размеры, подписи страниц, пустые страницы) и добавить его в PAGE_IMAGE_SETS.
  */
 import { D155_RU_IMAGES } from './d155ruImages';
+import { D155_EX_IMAGES } from './d155exImages';
+import { D155_OM_IMAGES } from './d155omImages';
+import { D155AX_OMM_IMAGES } from './d155ommImages';
+import { D355_SM_IMAGES } from './d355Images';
+import { D355_PP_IMAGES } from './d355ppImages';
+import { D475_SM_IMAGES } from './d475Images';
+import { D475A3_SM_IMAGES } from './d475a3Images';
 
 export interface PageImageSet {
   /** id документа из manuals.ts */
@@ -29,6 +36,13 @@ export interface PageImageSet {
 
 export const PAGE_IMAGE_SETS: Readonly<Record<string, PageImageSet>> = {
   [D155_RU_IMAGES.doc]: D155_RU_IMAGES,
+  [D155_EX_IMAGES.doc]: D155_EX_IMAGES,
+  [D155_OM_IMAGES.doc]: D155_OM_IMAGES,
+  [D155AX_OMM_IMAGES.doc]: D155AX_OMM_IMAGES,
+  [D355_SM_IMAGES.doc]: D355_SM_IMAGES,
+  [D355_PP_IMAGES.doc]: D355_PP_IMAGES,
+  [D475_SM_IMAGES.doc]: D475_SM_IMAGES,
+  [D475A3_SM_IMAGES.doc]: D475A3_SM_IMAGES,
 };
 
 export function pageSize(set: PageImageSet, n: number): readonly [number, number] {
