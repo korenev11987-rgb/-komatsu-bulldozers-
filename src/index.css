@@ -451,6 +451,20 @@ button.pbd__ref:hover { background: var(--komatsu); }
 .mviewer__gloss-table th, .mviewer__gloss-table td { padding: 4px 8px; border-bottom: 1px solid #f1e9c4; text-align: left; vertical-align: top; width: 50%; }
 .mviewer__gloss-table th { position: sticky; top: 0; background: #fff3bf; }
 .mviewer__gloss-note { display: block; color: #6b5a1d; font-size: .74rem; }
+.mviewer__side-note { margin: 10px; color: var(--muted, #6b6b6b); }
+.mviewer__side-sub { margin: 10px 8px 4px; font-size: .84rem; }
+.mviewer__tr { padding: 4px 10px 10px; line-height: 1.45; }
+.mviewer__tr-terms { margin-top: 8px; }
+.mviewer__tr-terms summary { cursor: pointer; font-weight: 600; }
+.md h3, .md h4, .md h5, .md h6 { margin: 10px 0 4px; font-size: .92rem; }
+.md p, .md ul, .md ol, .md blockquote { margin: 0 0 6px; }
+.md ul, .md ol { padding-left: 18px; }
+.md blockquote { padding-left: 8px; border-left: 3px solid #f1e9c4; color: #4b4b4b; }
+.md code { font-size: .8em; background: #f6f3e6; padding: 0 3px; border-radius: 3px; }
+.md__table { overflow-x: auto; margin: 0 0 6px; }
+.md__table table { border-collapse: collapse; font-size: .78rem; }
+.md__table th, .md__table td { border: 1px solid #eadfae; padding: 2px 5px; text-align: left; vertical-align: top; }
+.md__table th { background: #fff3bf; }
 @media (max-width: 640px) {
   .mviewer__body { flex-direction: column; }
   .mviewer__gloss { width: auto; height: 42%; border-left: 0; border-top: 3px solid var(--komatsu); }

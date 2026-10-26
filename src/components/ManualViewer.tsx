@@ -1,10 +1,15 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { pageImageUrl, pageLabel, pageSize } from '../data/repair/manualImages';
 import { MANUAL_PAGE_KINDS, nodeDoc, type ManualPageKind, type NodeManual } from '../data/repair/manualPages';
 import { MANUALS } from '../data/repair/manuals';
 import type { BreakdownRef, PartBreakdownData } from '../data/repair/types';
 import { GLOSSARIES } from '../data/manuals/glossary';
+import { loadTranslation, translationInfo, type DocTranslation } from '../data/manuals/translations';
 import { PartBreakdown } from './PartBreakdown';
+import type { TranslationState } from './PageSidePanel';
+
+/** Панель «Перевод на русский» (и рендер markdown) — отдельный чанк */
+const PageSidePanel = lazy(() => import('./PageSidePanel'));
 
 /*
  * Просмотр мануала — непрерывная вертикальная лента изображений страниц (без PDF).
@@ -36,6 +41,17 @@ const readGlossaryPref = () => {
     return localStorage.getItem(GLOSSARY_KEY) === '1';
   } catch {
     return false;
+  }
+};
+
+/** «Русский перевод»: по умолчанию включён для англоязычных документов; выбор пользователя запоминается */
+const TRANSLATION_KEY = 'mviewer.translation';
+const readTranslationPref = (): boolean | null => {
+  try {
+    const v = localStorage.getItem(TRANSLATION_KEY);
+    return v === '1' ? true : v === '0' ? false : null;
+  } catch {
+    return null;
   }
 };
 
@@ -80,6 +96,33 @@ export function ManualViewer({ manual, nodeTitle, initialPage, onPageChange, onC
     }
   };
   const [glossPage, setGlossPage] = useState<number | null>(null);
+  // ── Полный перевод страниц (ленивая загрузка по документу) ──
+  const trInfo = translationInfo(set);
+  const [trPref, setTrPref] = useState(readTranslationPref);
+  const showTr = !!trInfo && (trPref ?? trInfo.sourceLang !== 'ru');
+  const setShowTr = (v: boolean) => {
+    setTrPref(v);
+    try {
+      localStorage.setItem(TRANSLATION_KEY, v ? '1' : '0');
+    } catch {
+      /* только на время сеанса */
+    }
+  };
+  const [trDoc, setTrDoc] = useState<{ id: string; doc: DocTranslation | 'loading' | 'error' } | null>(null);
+  useEffect(() => {
+    if (!showTr) return;
+    const p = loadTranslation(set);
+    if (!p) return;
+    let live = true;
+    setTrDoc((d) => (d?.id === set.dir && d.doc !== 'error' ? d : { id: set.dir, doc: 'loading' }));
+    p.then(
+      (doc) => live && setTrDoc({ id: set.dir, doc }),
+      () => live && setTrDoc({ id: set.dir, doc: 'error' }),
+    );
+    return () => {
+      live = false;
+    };
+  }, [showTr, set]);
   const total = set.pageCount;
   const dialogRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -401,7 +444,22 @@ export function ManualViewer({ manual, nodeTitle, initialPage, onPageChange, onC
     if (r.doc === entry.doc.id) goTo(r.pdfPage);
     else if (manual.docs.some((d) => d.doc.id === r.doc)) onDocChange?.(r.doc, r.pdfPage);
   };
-  const glossEntries = glossPage != null ? glossary?.pages[glossPage] : undefined;
+  // Панель: при включённом переводе — следует за текущей страницей; иначе — страница, выбранная плашкой расшифровки
+  const sidePage = showTr ? (glossPage ?? current) : glossPage;
+  const glossEntries = sidePage != null && (showGlossary || glossPage != null) ? glossary?.pages[sidePage] : undefined;
+  const trLoaded = trDoc && trDoc.id === set.dir ? trDoc.doc : null;
+  const trState: TranslationState = !showTr || sidePage == null
+    ? null
+    : trLoaded == null || trLoaded === 'loading'
+      ? 'loading'
+      : trLoaded === 'error'
+        ? 'error'
+        : (trLoaded.pages[String(sidePage)] ?? (blank.has(sidePage) ? null : 'missing'));
+  const sideOpen = sidePage != null && (trState != null || !!glossEntries?.length);
+  const closeSide = () => {
+    if (showTr) setShowTr(false);
+    setGlossPage(null);
+  };
   const titleId = 'mviewer-title';
   const kindBtn = (k: { key: ManualPageKind; title: string }) => {
     const ref = entry.pages[k.key];
@@ -557,6 +615,12 @@ export function ManualViewer({ manual, nodeTitle, initialPage, onPageChange, onC
               По ширине
             </button>
           </div>
+          {trInfo && (
+            <label className="mviewer__gloss-toggle" title="Панель с полным переводом текущей страницы на русский">
+              <input type="checkbox" checked={showTr} onChange={(e) => setShowTr(e.target.checked)} data-tr-toggle />
+              Русский перевод
+            </label>
+          )}
           {glossary && (
             <label className="mviewer__gloss-toggle" title="Плашки с переводом английских подписей на страницах">
               <input type="checkbox" checked={showGlossary} onChange={(e) => setShowGlossary(e.target.checked)} data-gloss-toggle />
@@ -597,39 +661,17 @@ export function ManualViewer({ manual, nodeTitle, initialPage, onPageChange, onC
             </div>
           </div>
         </div>
-        {glossEntries && glossPage != null && (
-          <aside className="mviewer__gloss" aria-label={`Расшифровка EN→RU, стр. ${glossPage}`} data-gloss-panel={glossPage}>
-            <header className="mviewer__gloss-head">
-              <strong>
-                Расшифровка EN→RU · с. {pageLabel(set, glossPage) ?? '—'}, стр. {glossPage}
-                {glossary?.kinds?.[glossPage] && <> · {glossary.kinds[glossPage]}</>}
-              </strong>
-              <button type="button" className="mviewer__btn" onClick={() => setGlossPage(null)} aria-label="Закрыть расшифровку">
-                ×
-              </button>
-            </header>
-            <div className="mviewer__gloss-scroll">
-              <table className="mviewer__gloss-table">
-                <thead>
-                  <tr>
-                    <th scope="col">English</th>
-                    <th scope="col">Русский</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {glossEntries.map((g, i) => (
-                    <tr key={i}>
-                      <td lang="en">{g.en}</td>
-                      <td>
-                        {g.ru}
-                        {g.note && <small className="mviewer__gloss-note">{g.note}</small>}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </aside>
+        {sideOpen && sidePage != null && (
+          <Suspense fallback={<aside className="mviewer__gloss mviewer__side" aria-busy="true" />}>
+            <PageSidePanel
+              page={sidePage}
+              label={pageLabel(set, sidePage) ?? null}
+              kind={glossary?.kinds?.[sidePage]}
+              glossary={glossEntries}
+              translation={trState}
+              onClose={closeSide}
+            />
+          </Suspense>
         )}
         </div>
       </div>
