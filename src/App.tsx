@@ -117,7 +117,7 @@ export default function App() {
   return (
     <div className="app">
       <header className="app__header">
-        <h1>Бульдозеры Komatsu: интерактивные схемы</h1>
+        <h1>Бульдозеры Komatsu и Caterpillar: интерактивные схемы</h1>
         <p>Схемы по системам: мотор, ходовая, трансмиссия, гидравлика и электрика. Значения приблизительные.</p>
       </header>
 
@@ -181,7 +181,7 @@ export default function App() {
       )}
 
       <footer className="app__footer">
-        Учебная схема. Komatsu, D155, D355, D475, Sigmadozer, TORQFLOW — обозначения производителя Komatsu Ltd.
+        Учебная схема. Komatsu, D155, D355, D475, Sigmadozer, TORQFLOW — обозначения производителя Komatsu Ltd. Cat, Caterpillar, D6R, D9R, D10T, ACERT — товарные знаки Caterpillar Inc.; сайт с Caterpillar не связан.
       </footer>
     </div>
   );

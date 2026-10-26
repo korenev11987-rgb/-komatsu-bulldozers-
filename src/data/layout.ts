@@ -21,6 +21,8 @@ export interface Pose {
   bladeLift: number;
   /** Высота наконечника рыхлителя над грунтом (отрицательное — в грунте) */
   ripperTip: number;
+  /** Наклон (pitch) отвала, градусы: + — верх отвала вперёд (только модели с animExtras) */
+  bladePitch?: number;
 }
 
 export const restPose = (p: LayoutParams): Pose => ({ bladeLift: 0, ripperTip: Math.round(p.dims.ripperLift * 0.4) });
@@ -35,6 +37,8 @@ export interface Geometry {
   tx0: number;
   tx1: number;
   idler: Circle;
+  /** Заднее натяжное колесо (только элевированная ходовая) */
+  rearIdler?: Circle;
   sprocket: Circle;
   rollers: Circle[];
   carriers: Circle[];
@@ -83,6 +87,7 @@ export interface Geometry {
 
 /** Контур гусеницы вокруг натяжного колеса и звёздочки: offset 0 — линия звеньев, offset trackT — грунтозацепы */
 export function trackPath(geo: Geometry, offset = 0): string {
+  if (geo.rearIdler) return elevatedTrackPath(geo, offset);
   const { idler: i, sprocket: s, g, trackT } = geo;
   const r1 = g - i.cy - trackT + offset;
   const r2 = g - s.cy - trackT + offset;
@@ -92,6 +97,54 @@ export function trackPath(geo: Geometry, offset = 0): string {
     `A ${r2} ${r2} 0 0 1 ${s.cx} ${s.cy + r2}`,
     `L ${i.cx} ${i.cy + r1}`,
     `A ${r1} ${r1} 0 0 1 ${i.cx} ${i.cy - r1}`,
+    'Z',
+  ].join(' ');
+}
+
+/**
+ * Элевированная ходовая (Cat high-drive): лента огибает переднее натяжное колесо, поднятую звёздочку
+ * и заднее натяжное колесо — выпуклая оболочка трёх окружностей (внешние касательные).
+ */
+function elevatedTrackPath(geo: Geometry, offset: number): string {
+  const { idler: i, sprocket: s, rearIdler: r, trackT } = geo;
+  if (!r) return '';
+  // радиусы по средней линии ленты: колесо + (offset − trackT) + толщина ленты, как в trackPath
+  const circles = [
+    { x: i.cx, y: i.cy, r: i.r + 2 + offset },
+    { x: s.cx, y: s.cy, r: s.r + 2 + offset },
+    { x: r.cx, y: r.cy, r: r.r + 2 + offset },
+  ];
+  void trackT;
+  // внешняя касательная от a к b при обходе по часовой стрелке (на экране): нормаль наружу
+  const tangent = (a: (typeof circles)[number], b: (typeof circles)[number]) => {
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const L = Math.hypot(dx, dy);
+    const ux = dx / L;
+    const uy = dy / L;
+    const px = uy; // перпендикуляр наружу (для движения вправо — вверх)
+    const py = -ux;
+    const c = (a.r - b.r) / L;
+    const sn = Math.sqrt(Math.max(0, 1 - c * c));
+    const nx = c * ux + sn * px;
+    const ny = c * uy + sn * py;
+    return { a: { x: a.x + a.r * nx, y: a.y + a.r * ny }, b: { x: b.x + b.r * nx, y: b.y + b.r * ny }, n: Math.atan2(ny, nx) };
+  };
+  const t = [tangent(circles[0], circles[1]), tangent(circles[1], circles[2]), tangent(circles[2], circles[0])];
+  const f = (v: number) => v.toFixed(2);
+  const arc = (c: (typeof circles)[number], from: number, to: number, end: Pt) => {
+    let da = to - from;
+    while (da < 0) da += Math.PI * 2;
+    return `A ${f(c.r)} ${f(c.r)} 0 ${da > Math.PI ? 1 : 0} 1 ${f(end.x)} ${f(end.y)}`;
+  };
+  return [
+    `M ${f(t[0].a.x)} ${f(t[0].a.y)}`,
+    `L ${f(t[0].b.x)} ${f(t[0].b.y)}`,
+    arc(circles[1], t[0].n, t[1].n, t[1].a),
+    `L ${f(t[1].b.x)} ${f(t[1].b.y)}`,
+    arc(circles[2], t[1].n, t[2].n, t[2].a),
+    `L ${f(t[2].b.x)} ${f(t[2].b.y)}`,
+    arc(circles[0], t[2].n, t[0].n, t[0].a),
     'Z',
   ].join(' ');
 }
@@ -106,7 +159,8 @@ const rot = (pt: Pt, c: Pt, deg: number): Pt => {
 export function buildGeometry(p: LayoutParams, pose: Pose = restPose(p)): Geometry {
   const d = p.dims;
   const g = VIEWBOX.groundY;
-  const K = Math.min(1000 / d.overallLength, 405 / d.cabHeight);
+  const K = p.fixedK ?? Math.min(1000 / d.overallLength, 405 / d.cabHeight);
+  const elevated = p.drive === 'elevated';
   const x0 = VIEWBOX.cx - (d.overallLength * K) / 2;
   const X = (mm: number) => x0 + mm * K;
   const Y = (mm: number) => g - mm * K;
@@ -114,19 +168,24 @@ export function buildGeometry(p: LayoutParams, pose: Pose = restPose(p)): Geomet
 
   // ---- Ходовая (оценка радиусов по длине гусеницы на грунте: общая длина ленты ≈ 1,39 × TOG) ----
   const TOG = d.trackOnGround;
-  const Ri = 0.19 * TOG; // натяжное колесо по грунтозацепам
-  const Rs = 0.205 * TOG; // звёздочка по грунтозацепам
-  const Xsc = d.overallLength - d.sprocketToRipper; // ось звёздочки (из паспортного «звёздочка → рыхлитель»)
-  const Xic = Xsc - TOG; // ось натяжного колеса
+  // Элевированная ходовая (оценка радиусов по TOG): натяжные колёса на грунте, звёздочка поднята над задним колесом.
+  // Положение гусеницы — из паспортных длин: задний край ленты = «длина с отвалом» (без рыхлителя).
+  const Ri = elevated ? 0.15 * TOG : 0.19 * TOG; // натяжное колесо по грунтозацепам
+  const Rs = elevated ? 0.16 * TOG : 0.205 * TOG; // звёздочка по грунтозацепам
+  const Xri = elevated ? (d.lengthWithBlade ?? d.overallLength - d.sprocketToRipper) - Ri : 0; // ось заднего натяжного колеса
+  const Hs = 2 * Ri + 0.55 * Rs; // высота оси поднятой звёздочки (оценка)
+  const Xsc = elevated ? Xri - 0.06 * TOG : d.overallLength - d.sprocketToRipper; // ось звёздочки (из паспортного «звёздочка → рыхлитель»)
+  const Xic = elevated ? Xri - TOG : Xsc - TOG; // ось натяжного колеса
   const Xtr0 = Xic - Ri;
-  const Xtr1 = Xsc + Rs;
+  const Xtr1 = elevated ? Xri + Ri : Xsc + Rs;
   const trackT = S(0.055 * TOG + d.grouser);
 
   const idler = { cx: X(Xic), cy: Y(Ri), r: S(Ri) - trackT - 2 };
-  const sprocket = { cx: X(Xsc), cy: Y(Rs), r: S(Rs) - trackT - 2 };
+  const rearIdler = elevated ? { cx: X(Xri), cy: Y(Ri), r: S(Ri) - trackT - 2 } : undefined;
+  const sprocket = elevated ? { cx: X(Xsc), cy: Y(Hs), r: S(Rs) - trackT - 2 } : { cx: X(Xsc), cy: Y(Rs), r: S(Rs) - trackT - 2 };
   const rr = S(0.052 * TOG);
   const rStart = idler.cx + idler.r * 0.75 + rr;
-  const rEnd = sprocket.cx - sprocket.r * 0.7 - rr;
+  const rEnd = rearIdler ? rearIdler.cx - rearIdler.r * 0.75 - rr : sprocket.cx - sprocket.r * 0.7 - rr;
   const rollers = Array.from({ length: p.trackRollers }, (_, k) => {
     const n = p.trackRollers;
     let t = k / Math.max(1, n - 1);
@@ -146,10 +205,13 @@ export function buildGeometry(p: LayoutParams, pose: Pose = restPose(p)): Geomet
   });
   const frameTop = Math.max(...carriers.map((c) => c.cy + c.r)) + 2;
   const frameBot = g - trackT - rr * 2 + 6;
-  const frame = { x: idler.cx, y: frameTop, w: sprocket.cx - sprocket.r * 0.4 - idler.cx, h: Math.max(14, frameBot - frameTop) };
+  const frameTopE = rearIdler ? Math.min(frameTop, idler.cy - idler.r * 0.35) : frameTop;
+  const frame = rearIdler
+    ? { x: idler.cx, y: frameTopE, w: rearIdler.cx - idler.cx, h: Math.max(14, frameBot - frameTopE) }
+    : { x: idler.cx, y: frameTop, w: sprocket.cx - sprocket.r * 0.4 - idler.cx, h: Math.max(14, frameBot - frameTop) };
 
   // ---- Корпус ----
-  const deckY = Y(2 * Math.max(Ri, Rs)) - S(70);
+  const deckY = elevated ? Y(2 * Ri) - S(260) : Y(2 * Math.max(Ri, Rs)) - S(70);
   const hullBottom = Y(d.groundClearance);
   const cabEndMm = Xtr1 - d.tankLength;
   const cabStartMm = cabEndMm - d.cabLength;
@@ -157,7 +219,7 @@ export function buildGeometry(p: LayoutParams, pose: Pose = restPose(p)): Geomet
   const he = X(cabStartMm);
   const hl = he - hf;
   const hoodTop = Y(d.hoodHeight);
-  const noseK = p.hood === 'slant' ? 0.84 : p.hood === 'big' ? 0.95 : 0.97;
+  const noseK = p.hood === 'slant' ? 0.84 : p.hood === 'big' ? 0.95 : p.hood === 'cat' ? 0.93 : 0.97;
   const strip = p.hood === 'slant' ? 22 : 0;
   const hood = { front: hf, end: he, top: hoodTop, noseTop: Y(d.hoodHeight * noseK), bottom: deckY, strip };
   const hh = deckY - hoodTop;
@@ -197,11 +259,11 @@ export function buildGeometry(p: LayoutParams, pose: Pose = restPose(p)): Geomet
   // АКБ — в батарейном ящике на заднем крыле рядом с баком
   const batteries = { x: tank.x + Math.max(2, (tank.w - 60) / 2), y: deckY - 38, w: 60, h: 30 };
 
-  const exPos = p.hood === 'slant' ? 0.42 : p.hood === 'big' ? 0.36 : 0.3;
+  const exPos = p.hood === 'slant' ? 0.42 : p.hood === 'big' ? 0.36 : p.hood === 'cat' ? 0.4 : 0.3;
   const exR = Math.max(6, S(150));
   const exhaust = [{ x: hf + hl * exPos, top: Y(d.exhaustHeight), r: exR }];
   if (p.stacks === 2) exhaust.push({ x: hf + hl * exPos + S(520), top: Y(d.exhaustHeight) + S(60), r: exR });
-  const precPos = p.hood === 'slant' ? 0.76 : p.hood === 'big' ? 0.8 : 0.17;
+  const precPos = p.hood === 'slant' ? 0.76 : p.hood === 'big' ? 0.8 : p.hood === 'cat' ? 0.72 : 0.17;
   const precleaner = { x: hf + hl * precPos, top: hoodTop - S(520) };
 
   // ---- Отвал ----
@@ -230,6 +292,20 @@ export function buildGeometry(p: LayoutParams, pose: Pose = restPose(p)): Geomet
       [bFront + H * 0.22, g], [bFront, g], [bFront + H * 0.08, g - H * 0.5],
     ].map(([x, y]) => `${x},${y}`).join(' ');
   }
+  // Наклон (pitch) отвала вокруг шарнира толкающего бруса: только для моделей с animExtras (у Komatsu pitch = 0)
+  const pitch = p.animExtras ? pose.bladePitch ?? 0 : 0;
+  const pin = { x: bBack - 4, y: g - H * 0.24 };
+  const pr = (pt: Pt) => (pitch ? rot(pt, pin, -pitch) : pt);
+  if (pitch) {
+    outline = outline
+      .split(' ')
+      .map((xy) => {
+        const [x, y] = xy.split(',').map(Number);
+        const q = pr({ x, y });
+        return `${q.x},${q.y}`;
+      })
+      .join(' ');
+  }
   const blade = { front: bFront, back: bBack, top: bTop, bottom: g, H, outline };
 
   const pivot = { x: X(Xic + 0.42 * TOG), y: frame.y + frame.h * 0.45 };
@@ -241,12 +317,15 @@ export function buildGeometry(p: LayoutParams, pose: Pose = restPose(p)): Geomet
   const rp = (pt: Pt) => rot(pt, pivot, a);
 
   const liftTop = { x: hf + S(160), y: hood.noseTop + hh * 0.22 };
-  const liftEnd = rp({ x: bBack - H * 0.06, y: bTop + H * 0.2 });
+  const liftEnd = rp(pr({ x: bBack - H * 0.06, y: bTop + H * 0.2 }));
   const liftCyl = { x1: liftTop.x, y1: liftTop.y, x2: liftEnd.x, y2: liftEnd.y };
   const liftRestLen = Math.hypot(bBack - H * 0.06 - liftTop.x, bTop + H * 0.2 - liftTop.y);
-  const t1 = rp({ x: bBack - 2, y: bTop + H * 0.42 });
+  const t1 = rp(pr({ x: bBack - 2, y: bTop + H * 0.42 }));
   const t2 = rp({ x: pushArmRest.x1 + (pivot.x - pushArmRest.x1) * 0.32, y: pushArmRest.y1 + (pivot.y - pushArmRest.y1) * 0.32 - 4 });
   const tiltCyl = { x1: t1.x, y1: t1.y, x2: t2.x, y2: t2.y };
+  // длина корпуса цилиндра перекоса — по позе без наклона (иначе шток не «выдвигается» при pitch)
+  const t1r = rp({ x: bBack - 2, y: bTop + H * 0.42 });
+  const tiltRestLen = Math.hypot(t2.x - t1r.x, t2.y - t1r.y);
 
   // ---- Рыхлитель ----
   const n = p.ripperShanks;
@@ -316,12 +395,12 @@ export function buildGeometry(p: LayoutParams, pose: Pose = restPose(p)): Geomet
   };
 
   return {
-    p, K, g, trackT, tx0: X(Xtr0), tx1: X(Xtr1), idler, sprocket, rollers, carriers, frame, deckY, hullBottom,
+    p, K, g, trackT, tx0: X(Xtr0), tx1: X(Xtr1), idler, rearIdler, sprocket, rollers, carriers, frame, deckY, hullBottom,
     fender: { x: X(Xtr0) + 4, y: deckY, w: X(Xtr1) - X(Xtr0) - 4, h: Math.max(10, S(140)) },
     hood, radiator, engine, pumps, powertrain, torqueConverter, gearbox, steering, finalDrive, cab, dash, fuseBox, controllers, tank,
     exhaust, precleaner, blade, bladeRot, pushArm: pushArmRest, liftCyl, tiltCyl, ripper, ripperLift, ripperTilt,
     batteries, alternator, starter, lights, wiring, wiringStart: `${routeStarter} ${routeCab}`, connectors, hoses,
-    barrels: { lift: liftRestLen * 0.5, tilt: Math.hypot(tiltCyl.x2 - tiltCyl.x1, tiltCyl.y2 - tiltCyl.y1) * 0.55, ripLift: ripLiftRest * 0.5, ripTilt: ripTiltRest * 0.5 },
+    barrels: { lift: liftRestLen * 0.5, tilt: tiltRestLen * 0.55, ripLift: ripLiftRest * 0.5, ripTilt: ripTiltRest * 0.5 },
   };
 }
 
@@ -350,10 +429,10 @@ export function buildNodes(geo: Geometry): SchemaNode[] {
   return [
     // Ходовая
     { id: 'trackChain', system: 'undercarriage', label: 'Гусеница (звенья и башмаки)', shapes: [{ kind: 'path', d: trackPath(geo, geo.trackT) }], anchor: { x: (geo.tx0 + geo.tx1) / 2 + 40, y: g - 4 }, labelSide: 'bottom' },
-    { id: 'trackFrame', system: 'undercarriage', label: p.bogie ? 'Рама тележки, K-Bogie' : 'Рама тележки', shapes: [rect(geo.frame, 5)], anchor: center(geo.frame), labelSide: 'bottom' },
-    { id: 'carrierRollers', system: 'undercarriage', label: 'Поддерживающие катки', shapes: geo.carriers.map((c) => circ({ ...c, r: c.r + 3 })), anchor: { x: geo.carriers[0].cx, y: geo.carriers[0].cy }, labelSide: 'bottom' },
+    { id: 'trackFrame', system: 'undercarriage', label: p.bogie ? (p.brand ? 'Рама тележки, bogie' : 'Рама тележки, K-Bogie') : 'Рама тележки', shapes: [rect(geo.frame, 5)], anchor: center(geo.frame), labelSide: 'bottom' },
+    { id: 'carrierRollers', system: 'undercarriage', label: p.carrierOptional ? 'Поддерживающий каток (опция)' : 'Поддерживающие катки', shapes: geo.carriers.map((c) => circ({ ...c, r: c.r + 3 })), anchor: { x: geo.carriers[0].cx, y: geo.carriers[0].cy }, labelSide: 'bottom' },
     { id: 'trackRollers', system: 'undercarriage', label: `Опорные катки ×${p.trackRollers}`, shapes: geo.rollers.map(circ), anchor: { x: geo.rollers[2].cx, y: geo.rollers[2].cy + 6 }, labelSide: 'bottom' },
-    { id: 'idler', system: 'undercarriage', label: 'Натяжное колесо', shapes: [circ(geo.idler)], anchor: { x: geo.idler.cx, y: geo.idler.cy + geo.idler.r * 0.4 }, labelSide: 'bottom' },
+    { id: 'idler', system: 'undercarriage', label: geo.rearIdler ? 'Натяжные колёса (2)' : 'Натяжное колесо', shapes: geo.rearIdler ? [circ(geo.idler), circ(geo.rearIdler)] : [circ(geo.idler)], anchor: { x: geo.idler.cx, y: geo.idler.cy + geo.idler.r * 0.4 }, labelSide: 'bottom' },
     { id: 'sprocket', system: 'undercarriage', label: 'Ведущая звёздочка', shapes: [circ({ ...geo.sprocket, r: geo.sprocket.r + 4 })], anchor: { x: geo.sprocket.cx - geo.sprocket.r * 0.6, y: geo.sprocket.cy + geo.sprocket.r * 0.6 }, labelSide: 'bottom' },
     // Мотор
     { id: 'cooling', system: 'engine', label: 'Радиатор и вентилятор', shapes: [rect(geo.radiator)], anchor: { x: geo.radiator.x + geo.radiator.w / 2, y: geo.radiator.y + 16 }, labelSide: 'top', xray: true },
@@ -362,7 +441,7 @@ export function buildNodes(geo: Geometry): SchemaNode[] {
     { id: 'pumps', system: 'hydraulics', label: 'Гидронасосы', shapes: [rect(geo.pumps)], anchor: center(geo.pumps), labelSide: 'bottom', xray: true },
     // Трансмиссия
     { id: 'torqueConverter', system: 'transmission', label: 'Гидротрансформатор', shapes: [rect(geo.torqueConverter, 14)], anchor: center(geo.torqueConverter), labelSide: 'top', xray: true },
-    { id: 'gearbox', system: 'transmission', label: 'КПП TORQFLOW', shapes: [rect(geo.gearbox, 6)], anchor: center(geo.gearbox), labelSide: 'top', xray: true },
+    { id: 'gearbox', system: 'transmission', label: p.brand && p.brand !== 'KOMATSU' ? 'КПП powershift' : 'КПП TORQFLOW', shapes: [rect(geo.gearbox, 6)], anchor: center(geo.gearbox), labelSide: 'top', xray: true },
     { id: 'steering', system: 'transmission', label: p.steeringLabel, shapes: [rect(geo.steering, 6)], anchor: center(geo.steering), labelSide: 'top', xray: true },
     { id: 'finalDrive', system: 'transmission', label: 'Бортовой редуктор', shapes: [circ(geo.finalDrive)], anchor: { x: geo.finalDrive.cx + 6, y: geo.finalDrive.cy + 6 }, labelSide: 'bottom' },
     // Гидравлика — отвал и рыхлитель (фигуры отвала — в «рабочих» координатах; поворот задаёт bladeRot)

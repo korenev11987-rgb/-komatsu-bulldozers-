@@ -54,7 +54,12 @@ export function PartBreakdown({ data, docInfo, title = 'Инструмент и 
     );
   };
 
-  const Missing = () => <span className="src-badge src-badge--none">{NOT_FOUND}</span>;
+  const Missing = () => (
+    <span className="pbd__nf">
+      <span className="src-badge src-badge--none">{NOT_FOUND}</span>
+      {data.missingNote && <small> — {data.missingNote}</small>}
+    </span>
+  );
 
   return (
     <section className={['pbd', `pbd--${variant}`, open && 'is-open', className].filter(Boolean).join(' ')} data-breakdown aria-label={title}>

@@ -1,10 +1,12 @@
 import type { ManualDoc } from './types';
+import { CAT_MANUALS } from '../cat/docs';
 
 /**
  * Документы, из которых взяты данные карточек.
  * Все документы прочитаны в открытом доступе (без входа и без обхода платного доступа).
  */
 export const MANUALS: Record<string, ManualDoc> = {
+  ...CAT_MANUALS,
   'D155-SM-RU': {
     id: 'D155-SM-RU',
     title: 'Заводская инструкция D155A-5',

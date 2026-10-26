@@ -12,6 +12,7 @@ import { D355_SM_IMAGES } from './d355Images';
 import { D355_PP_IMAGES } from './d355ppImages';
 import { D475_SM_IMAGES } from './d475Images';
 import { D475A3_SM_IMAGES } from './d475a3Images';
+import { CAT_D10T_EN_IMAGES, CAT_D10T_RU_IMAGES, CAT_D6R_IMAGES, CAT_D9R_IMAGES } from '../cat/images';
 
 export interface PageImageSet {
   /** id документа из manuals.ts */
@@ -43,6 +44,10 @@ export const PAGE_IMAGE_SETS: Readonly<Record<string, PageImageSet>> = {
   [D355_PP_IMAGES.doc]: D355_PP_IMAGES,
   [D475_SM_IMAGES.doc]: D475_SM_IMAGES,
   [D475A3_SM_IMAGES.doc]: D475A3_SM_IMAGES,
+  [CAT_D10T_RU_IMAGES.doc]: CAT_D10T_RU_IMAGES,
+  [CAT_D10T_EN_IMAGES.doc]: CAT_D10T_EN_IMAGES,
+  [CAT_D9R_IMAGES.doc]: CAT_D9R_IMAGES,
+  [CAT_D6R_IMAGES.doc]: CAT_D6R_IMAGES,
 };
 
 export function pageSize(set: PageImageSet, n: number): readonly [number, number] {

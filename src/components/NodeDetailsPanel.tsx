@@ -57,7 +57,7 @@ export function NodeDetailsPanel({ model, node, onClose, manual = null, onOpenMa
           ))}
         </dl>
         <p className="panel__hint">
-          Нажмите на узел схемы: откроется карточка с составом узла, порядком разборки и сборки и указаниями по обслуживанию — со ссылками на страницы мануалов Komatsu.
+          Нажмите на узел схемы: откроется карточка с составом узла, порядком разборки и сборки и указаниями по обслуживанию — со ссылками на страницы {model.series === 'Caterpillar' ? 'официальных спецификаций Caterpillar' : 'мануалов Komatsu'}.
         </p>
         <p className="panel__disclaimer">
           Характеристики приблизительные, по открытым данным производителя; зависят от исполнения и года выпуска.
@@ -67,6 +67,7 @@ export function NodeDetailsPanel({ model, node, onClose, manual = null, onOpenMa
   }
 
   const system = SYSTEMS[node.system];
+  const mfr = model.series === 'Caterpillar' ? 'Caterpillar' : 'Komatsu';
   const card = getRepairCard(model.id, node.id);
   const found = SECTIONS.filter((s) => card[s.key].status === 'manual').length;
   const current = SECTIONS.find((s) => s.key === tab);
@@ -94,7 +95,7 @@ export function NodeDetailsPanel({ model, node, onClose, manual = null, onOpenMa
       )}
       {manual && onOpenManual ? (
         <button type="button" className="manual-open" onClick={onOpenManual} data-open-manual>
-          <span className="manual-open__icon" aria-hidden="true">PDF</span>
+          <span className="manual-open__icon" aria-hidden="true">≡</span>
           Открыть в мануале
           <small>{manual.doc.title}, {manual.doc.docNo}</small>
         </button>
@@ -137,7 +138,7 @@ export function NodeDetailsPanel({ model, node, onClose, manual = null, onOpenMa
 
       <div id="tabpanel" role="tabpanel" aria-labelledby={`tab-${tab}`} className="tabpanel">
         {current ? (
-          <SectionView title={current.title} section={card[current.key]} ordered={current.ordered} />
+          <SectionView title={current.title} section={card[current.key]} ordered={current.ordered} mfr={mfr} />
         ) : (
           <>
             <p className="panel__desc">{node.description}</p>
@@ -156,7 +157,7 @@ export function NodeDetailsPanel({ model, node, onClose, manual = null, onOpenMa
               ))}
             </ul>
             <p className="panel__disclaimer">
-              Обзор — общее учебное описание схемы, а не выдержка из мануала. Разделы «Состав», «Разборка», «Сборка» и «Ремонт и ТО» заполняются только по мануалам Komatsu.
+              Обзор — общее учебное описание схемы, а не выдержка из мануала. Разделы «Состав», «Разборка», «Сборка» и «Ремонт и ТО» заполняются только по документам {mfr}.
             </p>
           </>
         )}
@@ -165,13 +166,13 @@ export function NodeDetailsPanel({ model, node, onClose, manual = null, onOpenMa
       <ModelDocs modelId={model.id} compact />
 
       <p className="panel__disclaimer">
-        Перед работами сверяйтесь с официальным Shop Manual / Operation &amp; Maintenance Manual Komatsu для серийного номера вашей машины. Каталожные номера запчастей не приводятся.
+        Перед работами сверяйтесь с официальным {mfr === 'Caterpillar' ? 'сервисным руководством Caterpillar (Cat SIS)' : <>Shop Manual / Operation &amp; Maintenance Manual Komatsu</>} для серийного номера вашей машины. Каталожные номера запчастей не приводятся.
       </p>
     </aside>
   );
 }
 
-function SectionView({ title, section, ordered }: { title: string; section: RepairSection; ordered: boolean }) {
+function SectionView({ title, section, ordered, mfr = 'Komatsu' }: { title: string; section: RepairSection; ordered: boolean; mfr?: string }) {
   if (section.status === 'not-found') {
     return (
       <section className="rsec">
@@ -180,7 +181,7 @@ function SectionView({ title, section, ordered }: { title: string; section: Repa
           <span className="src-badge src-badge--none">данные из мануала не найдены</span>
         </div>
         <p className="rsec__empty">
-          В доступных нам мануалах Komatsu для этой модели нет сведений для этого раздела. Мы не заполняем его общими знаниями — используйте Shop Manual Komatsu.
+          {mfr === 'Caterpillar' ? 'В открытых документах Caterpillar для этой модели нет сведений для этого раздела (сервисные руководства — только в Cat SIS по подписке у дилера). Мы не заполняем его общими знаниями.' : 'В доступных нам мануалах Komatsu для этой модели нет сведений для этого раздела. Мы не заполняем его общими знаниями — используйте Shop Manual Komatsu.'}
         </p>
       </section>
     );

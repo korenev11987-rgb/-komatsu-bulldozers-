@@ -134,6 +134,8 @@ export interface PartBreakdownData {
   time: BreakdownStated[];
   /** К какой модели/документу относятся данные */
   scope?: string;
+  /** Где искать то, чего нет в документах (например, «Cat SIS / Standard Job Times») */
+  missingNote?: string;
 }
 
 export type BreakdownBook = Record<string, PartBreakdownData>;

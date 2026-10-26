@@ -8,7 +8,7 @@ interface Props {
   onChange: (id: ModelId) => void;
 }
 
-const short = (m: BulldozerModel) => m.fullName.replace(/^Komatsu\s+/, '');
+const short = (m: BulldozerModel) => m.fullName.replace(/^(Komatsu|Caterpillar|Cat)\s+/, '');
 
 /** Переключатель моделей, сгруппированный по сериям: D155 / D275 / D355 / D375 / D475 */
 export function ModelSwitcher({ models, activeId, onChange }: Props) {

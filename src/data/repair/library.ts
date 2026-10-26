@@ -1,4 +1,5 @@
 import { D155_RU_BOOK } from './d155ru';
+import { CAT_REPAIR } from '../cat/docs';
 import type { ManualRef, RepairBook, RepairLibrary, RepairSection, SectionKey } from './types';
 
 /*
@@ -814,4 +815,5 @@ export const REPAIR: RepairLibrary = {
   D155: mergeBooks(D155_RU_BOOK, D155_OMM_BOOK, 'Дополнительно — D155AX-8E0 (Operation & Maintenance Manual, EENAM03780)'),
   D355: d355,
   D475: d475,
+  ...CAT_REPAIR,
 };

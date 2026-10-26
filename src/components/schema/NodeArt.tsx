@@ -50,13 +50,13 @@ export function NodeArt({ id, geo, anim }: { id: NodeId; geo: Geometry; anim?: A
               </g>
             );
           })}
-          {p.bogie && <text className="decor__micro" x={f.x + f.w * 0.5} y={f.y + f.h * 0.62} textAnchor="middle">K-BOGIE</text>}
+          {p.bogie && <text className="decor__micro" x={f.x + f.w * 0.5} y={f.y + f.h * 0.62} textAnchor="middle">{p.brand ? 'BOGIE' : 'K-BOGIE'}</text>}
         </g>
       );
     }
     case 'carrierRollers':
       return (
-        <g>
+        <g opacity={p.carrierOptional ? 0.55 : undefined} strokeDasharray={p.carrierOptional ? '3 2' : undefined}>
           {geo.carriers.map((c, k) => (
             <g key={k}>
               <rect x={c.cx - 3.5} y={c.cy} width={7} height={Math.max(2, geo.frame.y - c.cy + 2)} fill="#2b3035" />
@@ -80,8 +80,16 @@ export function NodeArt({ id, geo, anim }: { id: NodeId; geo: Geometry; anim?: A
       );
     case 'idler':
       return (
-        <g transform={spin(geo.idler.r + T, geo.idler.cx, geo.idler.cy)}>
-          <Wheel {...geo.idler} holes={5} />
+        <g>
+          <g transform={spin(geo.idler.r + T, geo.idler.cx, geo.idler.cy)}>
+            <Wheel {...geo.idler} holes={5} />
+          </g>
+          {/* Элевированная ходовая: заднее натяжное колесо */}
+          {geo.rearIdler && (
+            <g transform={spin(geo.rearIdler.r + T, geo.rearIdler.cx, geo.rearIdler.cy)}>
+              <Wheel {...geo.rearIdler} holes={5} />
+            </g>
+          )}
         </g>
       );
     case 'sprocket': {
@@ -131,8 +139,8 @@ export function NodeArt({ id, geo, anim }: { id: NodeId; geo: Geometry; anim?: A
     }
     case 'engine': {
       const e = geo.engine;
-      const v12 = p.engineLabel.includes('V12');
-      const cyl = 6;
+      const v12 = p.engineArt ? p.engineArt.vee : p.engineLabel.includes('V12');
+      const cyl = p.engineArt ? (p.engineArt.vee ? p.engineArt.cyl / 2 : p.engineArt.cyl) : 6;
       const cw = (e.w - e.w * 0.22) / cyl;
       const hh = e.h * 0.28;
       return (
@@ -151,7 +159,7 @@ export function NodeArt({ id, geo, anim }: { id: NodeId; geo: Geometry; anim?: A
           <circle className="xr-fill" cx={e.x + e.w - e.h * 0.32} cy={e.y + e.h * 0.55} r={e.h * 0.36} />
           <circle className="xr-fill xr-solid" cx={e.x + e.w * 0.58} cy={e.y + e.h * 0.66} r={Math.min(11, e.h * 0.18)} />
           {v12 && <circle className="xr-fill xr-solid" cx={e.x + e.w * 0.36} cy={e.y + e.h * 0.66} r={Math.min(11, e.h * 0.18)} />}
-          <text className="decor__micro xr-label" x={e.x + e.w * 0.11} y={e.y + e.h * 0.72}>{v12 ? 'V12 · 30,5 л' : p.engineLabel.includes('155') ? 'R6 · 19 л' : 'R6 · 15,2 л'}</text>
+          <text className="decor__micro xr-label" x={e.x + e.w * 0.11} y={e.y + e.h * 0.72}>{p.engineArt ? p.engineArt.label : v12 ? 'V12 · 30,5 л' : p.engineLabel.includes('155') ? 'R6 · 19 л' : 'R6 · 15,2 л'}</text>
         </g>
       );
     }

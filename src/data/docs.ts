@@ -1,4 +1,5 @@
 import type { ModelId } from '../types';
+import { CAT_MODEL_DOCS } from './cat/docs';
 
 export interface ModelDocument {
   id: string;
@@ -37,6 +38,7 @@ export const MODEL_DOCS: Partial<Record<ModelId, ModelDocument[]>> = {
       note: 'D155A-5 — более раннее поколение, чем изображённый на схеме D155AX-8: данные фрагмента (общие сведения, техника безопасности, моменты затяжки, характеристики) относятся к D155A-5 и для D155AX-8 могут отличаться.',
     },
   ],
+  ...CAT_MODEL_DOCS,
 };
 
 export const docUrl = (d: ModelDocument): string => `${import.meta.env.BASE_URL}${d.file}`;

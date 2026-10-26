@@ -29,7 +29,20 @@ export type NodeId =
   | 'lights'
   | 'monitor';
 
-export type ModelId = 'D155' | 'D275A-2' | 'D275A-5' | 'D355' | 'D375A-3' | 'D375A-5' | 'D375A-6' | 'D375A-8' | 'D475';
+export type ModelId =
+  | 'D155'
+  | 'D275A-2'
+  | 'D275A-5'
+  | 'D355'
+  | 'D375A-3'
+  | 'D375A-5'
+  | 'D375A-6'
+  | 'D375A-8'
+  | 'D475'
+  /* Caterpillar (элевированная звёздочка) */
+  | 'CAT-D6R'
+  | 'CAT-D9R'
+  | 'CAT-D10T';
 
 export interface SystemInfo {
   id: SystemId;
@@ -117,6 +130,10 @@ export interface ModelDims {
   cabLength: number;
   /** Оценка: длина топливного бака за кабиной */
   tankLength: number;
+  /** Длина машины с отвалом без рыхлителя (паспорт; для элевированной ходовой задаёт положение гусеницы) */
+  lengthWithBlade?: number;
+  /** Длина базового трактора (паспорт) */
+  basicLength?: number;
 }
 
 /** Параметры, влияющие на прорисовку конкретной модели */
@@ -135,13 +152,26 @@ export interface LayoutParams {
   /** Тип отвала: Sigmadozer (D155), прямой/полу-U старого образца (D355), U с козырьком (D475) */
   bladeType: 'sigma' | 'straight' | 'u';
   /** Форма капота: скошенный (D155-8), угловатый 80-х (D355), большой V12 (D475) */
-  hood: 'slant' | 'angular' | 'big';
+  hood: 'slant' | 'angular' | 'big' | 'cat';
   /** Подвеска катков K-Bogie (тележки по 2 катка) */
   bogie: boolean;
   /** Двойной перекос отвала (два цилиндра перекоса) */
   dualTilt: boolean;
   /** Число выхлопных труб */
   stacks: 1 | 2;
+  /* ---- Необязательные поля (модели Caterpillar; у Komatsu не заданы — поведение прежнее) ---- */
+  /** Ходовая: 'elevated' — элевированная звёздочка (high-drive, треугольный обвод: 2 натяжных колеса + звёздочка сверху) */
+  drive?: 'elevated';
+  /** Надпись на капоте (по умолчанию KOMATSU) */
+  brand?: string;
+  /** Общий масштаб px/мм для группы моделей (истинные относительные размеры); иначе — масштаб под экран */
+  fixedK?: number;
+  /** Поддерживающие катки — опция (рисуются пунктиром, подпись «опция») */
+  carrierOptional?: boolean;
+  /** Рисунок двигателя: число цилиндров, V-образный, подпись */
+  engineArt?: { cyl: number; vee: boolean; label: string };
+  /** Анимация наклона (pitch) отвала и рычагов в кабине */
+  animExtras?: boolean;
 }
 
 export interface SpecItem {

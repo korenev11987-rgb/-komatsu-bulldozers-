@@ -70,7 +70,7 @@ export function BulldozerSchema({ model, selectedId, activeSystem, onSelect, ani
   const rest = useMemo(() => buildGeometry(model.layout), [model.layout]);
   const restNodes = useMemo(() => buildNodes(rest), [rest]);
   const pose = anim?.pose;
-  const geo = useMemo(() => (pose ? buildGeometry(model.layout, pose) : rest), [model.layout, rest, pose?.bladeLift, pose?.ripperTip]);
+  const geo = useMemo(() => (pose ? buildGeometry(model.layout, pose) : rest), [model.layout, rest, pose?.bladeLift, pose?.ripperTip, pose?.bladePitch]);
   const nodes = useMemo(() => (geo === rest ? restNodes : buildNodes(geo)), [geo, rest, restNodes]);
   const [hoverId, setHoverId] = useState<NodeId | null>(null);
 
@@ -130,7 +130,7 @@ export function BulldozerSchema({ model, selectedId, activeSystem, onSelect, ani
 
         <g className={['machine', anim?.engine === 'crank' && 'vib vib--crank', anim?.engine === 'run' && anim.rpm > 0.6 && 'vib vib--run'].filter(Boolean).join(' ')}>
           <FarSide geo={geo} />
-          <Body geo={geo} />
+          <Body geo={geo} anim={anim} />
           {/* Проход 1: рисунок узлов в исходном порядке. Клики не перехватывает (pointer-events: none) */}
           {nodes.map((n) => (
             <g key={n.id} className={`${nodeClass(n)} node--art`} data-node-art={n.id} style={{ ['--c' as string]: SYSTEMS[n.system].color }} aria-hidden="true">
@@ -227,7 +227,7 @@ export function BulldozerSchema({ model, selectedId, activeSystem, onSelect, ani
 
       </svg>
       <figcaption className="schema__caption">
-        <strong>{model.fullName}</strong> · вид сбоку · пропорции по паспортным габаритам: длина {fmtM(d.overallLength)} м, высота по кабине {fmtM(d.cabHeight)} м, отвал {fmtM(d.bladeWidth)} × {fmtM(d.bladeHeight)} м, гусеница на грунте {fmtM(d.trackOnGround)} м (машины приведены к размеру экрана — см. линейку «1 м»). Нажмите на узел или подпись (или выберите узел клавишей Tab и нажмите Enter / Пробел), чтобы открыть описание. Внутренние узлы показаны «рентгеном».
+        <strong>{model.fullName}</strong> · вид сбоку · пропорции по паспортным габаритам: длина {fmtM(d.overallLength)} м, высота по кабине {fmtM(d.cabHeight)} м, отвал {fmtM(d.bladeWidth)} × {fmtM(d.bladeHeight)} м, гусеница на грунте {fmtM(d.trackOnGround)} м ({model.layout.fixedK ? 'модели Caterpillar показаны в едином масштабе — см. линейку «1 м»' : 'машины приведены к размеру экрана — см. линейку «1 м»'}). Нажмите на узел или подпись (или выберите узел клавишей Tab и нажмите Enter / Пробел), чтобы открыть описание. Внутренние узлы показаны «рентгеном».
       </figcaption>
     </figure>
   );

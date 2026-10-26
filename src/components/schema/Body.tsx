@@ -1,4 +1,5 @@
 import { trackPath, type Geometry } from '../../data/layout';
+import type { AnimFrame } from '../../anim/stages';
 
 /** Дальняя гусеница (смещена для лёгкой перспективы) */
 export function FarSide({ geo }: { geo: Geometry }) {
@@ -13,7 +14,7 @@ export function FarSide({ geo }: { geo: Geometry }) {
 /** Верхняя кромка капота в точке x */
 export function hoodTopAt(geo: Geometry, x: number): number {
   const { hood: h, p } = geo;
-  if (p.hood === 'slant') {
+  if (p.hood === 'slant' || p.hood === 'cat') {
     const x0 = h.front + 8;
     return h.noseTop + ((h.top - h.noseTop) * Math.max(0, x - x0)) / (h.end - x0);
   }
@@ -25,7 +26,7 @@ export function hoodTopAt(geo: Geometry, x: number): number {
 }
 
 /** Некликабельная «оболочка» машины: корпус, капот, кабина, бак, выхлоп и т. д. */
-export function Body({ geo }: { geo: Geometry }) {
+export function Body({ geo, anim = null }: { geo: Geometry; anim?: AnimFrame | null }) {
   const { hood: h, cab: c, tank: t, fender: f, p, deckY, hullBottom, K } = geo;
   const modern = p.cab === 'modern';
   const hl = h.end - h.front;
@@ -39,6 +40,9 @@ export function Body({ geo }: { geo: Geometry }) {
   } else if (p.hood === 'big') {
     const x1 = h.front + hl * 0.22;
     hoodPts = `${h.front},${deckY} ${h.front - 5},${h.noseTop + hh * 0.18} ${h.front + 14},${h.noseTop} ${x1},${h.top} ${h.end},${h.top} ${h.end},${deckY}`;
+  } else if (p.hood === 'cat') {
+    // Cat D6R/D9R/D10T: капот с плавным уклоном вперёд, высокая облицовка радиатора с фаской
+    hoodPts = `${h.front},${deckY} ${h.front - 2},${h.noseTop + hh * 0.08} ${h.front + 8},${h.noseTop} ${h.end},${h.top} ${h.end},${deckY}`;
   } else {
     // D355A-3: угловатый капот 80-х с фаской и ступенькой у кабины
     hoodPts = `${h.front},${deckY} ${h.front},${h.top + 10} ${h.front + 10},${h.top} ${h.end - 30},${h.top} ${h.end - 30},${h.top - 8} ${h.end},${h.top - 8} ${h.end},${deckY}`;
@@ -84,6 +88,11 @@ export function Body({ geo }: { geo: Geometry }) {
     ? `${c.x + 5},${c.top + ch * 0.58} ${c.x + W * 0.135},${c.top + ch * 0.08} ${c.x + W * 0.18},${c.top + ch * 0.08} ${c.x + W * 0.07},${c.top + ch * 0.62}`
     : `${c.x + W * 0.05},${winTop} ${c.x + W * 0.1},${winTop} ${c.x + W * 0.1},${winBottom} ${c.x + W * 0.05},${winBottom}`;
   const postX = c.x + W * (modern ? 0.56 : 0.5);
+  // Рычаги в кабине (только модели с animExtras): джойстик отвала/рыхлителя и рычаг хода отклоняются по фазе анимации
+  const lever = (() => {
+    if (!p.animExtras || !anim?.levers) return { left: 0, right: 0 };
+    return { left: anim.levers.travel * 16, right: anim.levers.implement * 16 };
+  })();
   const tankBrand = Math.max(9, Math.min(14, t.w * 0.13));
 
   return (
@@ -163,9 +172,9 @@ export function Body({ geo }: { geo: Geometry }) {
           </g>
         ))}
 
-        {/* Надпись KOMATSU — чёрная, на боковине капота над окном разреза */}
+        {/* Надпись производителя (KOMATSU по умолчанию) — чёрная, на боковине капота над окном разреза */}
         <text className="decor__brand" x={brand.x} y={brand.y} style={{ fontSize: brand.size }} textAnchor={brand.anchor}>
-          KOMATSU
+          {p.brand ?? 'KOMATSU'}
         </text>
 
         {/* Топливный бак */}
@@ -200,10 +209,14 @@ export function Body({ geo }: { geo: Geometry }) {
           />
           {modern ? (
             <>
-              <line x1={c.x + W * 0.86} y1={winBottom - 2} x2={c.x + W * 0.84} y2={winBottom - ch * 0.12} stroke="#9aa1a8" strokeWidth={2.5} />
-              <ellipse cx={c.x + W * 0.84} cy={winBottom - ch * 0.14} rx={4} ry={6} fill="#111" stroke="#666" />
-              <line x1={c.x + W * 0.52} y1={winBottom - 2} x2={c.x + W * 0.5} y2={winBottom - ch * 0.1} stroke="#9aa1a8" strokeWidth={2.5} />
-              <ellipse cx={c.x + W * 0.5} cy={winBottom - ch * 0.12} rx={4} ry={5} fill="#111" stroke="#666" />
+              <g transform={`rotate(${lever.right} ${c.x + W * 0.86} ${winBottom - 2})`} className="cab-lever" data-lever="implement">
+                <line x1={c.x + W * 0.86} y1={winBottom - 2} x2={c.x + W * 0.84} y2={winBottom - ch * 0.12} stroke="#9aa1a8" strokeWidth={2.5} />
+                <ellipse cx={c.x + W * 0.84} cy={winBottom - ch * 0.14} rx={4} ry={6} fill="#111" stroke="#666" />
+              </g>
+              <g transform={`rotate(${lever.left} ${c.x + W * 0.52} ${winBottom - 2})`} className="cab-lever" data-lever="steer">
+                <line x1={c.x + W * 0.52} y1={winBottom - 2} x2={c.x + W * 0.5} y2={winBottom - ch * 0.1} stroke="#9aa1a8" strokeWidth={2.5} />
+                <ellipse cx={c.x + W * 0.5} cy={winBottom - ch * 0.12} rx={4} ry={5} fill="#111" stroke="#666" />
+              </g>
             </>
           ) : (
             [0, 1].map((k) => (

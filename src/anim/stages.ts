@@ -77,6 +77,8 @@ export interface AnimFrame {
   time: number;
   phase: string;
   highlight: NodeId[];
+  /** Отклонение рычагов в кабине −1…1 (рисуются только у моделей с layout.animExtras) */
+  levers?: { implement: number; travel: number };
 }
 
 const clamp = (v: number, a = 0, b = 1) => Math.min(b, Math.max(a, v));
@@ -115,6 +117,7 @@ export function frameAt(stage: StageId, t: number, time: number, p: LayoutParams
       return { ...base, smoke: 0.4, rpm: lerp(0.52, 0.38, k), oil: 0.7, phase: 'Холостой ход: генератор заряжает АКБ, контрольные лампы погасли', highlight: ['engine', 'alternator', 'monitor'] };
     }
     case 'blade': {
+      if (p.animExtras) return bladeWithPitch(base, t, d);
       const up = seg(t, 0.1, 0.42);
       const down = seg(t, 0.55, 0.82);
       const back = seg(t, 0.88, 1);
@@ -133,6 +136,7 @@ export function frameAt(stage: StageId, t: number, time: number, p: LayoutParams
       const phase = t < 0.24 ? `Рыхлитель опускается на глубину до ≈${(d.ripperDepth / 1000).toFixed(2).replace('.', ',')} м` : moving ? 'Звёздочки тянут гусеницу — машина идёт вперёд, зуб рыхлит грунт' : 'Рыхлитель поднимается из грунта';
       return {
         ...base, pose: { ...base.pose, ripperTip: tip }, trackShift, rpm: moving ? 0.86 : 0.55, smoke: moving ? 0.8 : 0.4, hydRipper: !moving, clods: moving, phase,
+        levers: { implement: t < 0.24 ? -0.8 * (1 - seg(t, 0.2, 0.24)) : t > 0.82 ? 0.8 * (1 - seg(t, 0.96, 1)) : 0, travel: moving ? -1 : 0 },
         highlight: moving ? ['ripper', 'sprocket', 'trackChain', 'finalDrive', 'gearbox'] : ['ripper', 'ripperCylinders', 'pumps'],
       };
     }
@@ -146,8 +150,47 @@ export function frameAt(stage: StageId, t: number, time: number, p: LayoutParams
       return {
         ...base, pose: { ...base.pose, bladeLift: blade }, trackShift: speed * dur * 0.7 * moveK, rpm: moving ? 0.9 : 0.5, smoke: moving ? 0.85 : 0.35,
         hydBlade: !moving && t < 0.95, soilPile: clamp((t - 0.14) / 0.64) * (t > 0.9 ? 1 : 1), phase,
+        levers: { implement: t < 0.12 ? -0.5 : t > 0.78 && t < 0.9 ? 0.6 : 0, travel: moving ? -1 : 0 },
         highlight: moving ? ['blade', 'trackChain', 'sprocket', 'steering'] : ['blade', 'bladeCylinders'],
       };
     }
   }
+}
+
+/**
+ * Этап «Отвал» для моделей с animExtras (Cat): подъём → опускание → наклон (pitch) вперёд/назад → возврат.
+ * Рычаг (джойстик) отвала в кабине отклоняется по фазе. У моделей Komatsu не используется.
+ */
+function bladeWithPitch(base: AnimFrame, t: number, d: LayoutParams['dims']): AnimFrame {
+  const up = seg(t, 0.06, 0.3);
+  const down = seg(t, 0.38, 0.58);
+  const back = seg(t, 0.62, 0.7);
+  const fwd = seg(t, 0.72, 0.82);
+  const rev = seg(t, 0.84, 0.94);
+  const lift = t < 0.38 ? d.bladeLift * up : t < 0.62 ? lerp(d.bladeLift, -d.bladeDrop * 0.6, down) : lerp(-d.bladeDrop * 0.6, 0, back);
+  const pitch = t < 0.72 ? 0 : t < 0.84 ? lerp(0, 7, fwd) : lerp(7, 0, rev);
+  const moving = (t > 0.06 && t < 0.3) || (t > 0.38 && t < 0.58) || (t > 0.62 && t < 0.94);
+  const implement = t > 0.06 && t < 0.3 ? 1 : t > 0.38 && t < 0.58 ? -1 : t > 0.62 && t < 0.7 ? 0.6 : t > 0.72 && t < 0.82 ? -0.7 : t > 0.84 && t < 0.94 ? 0.7 : 0;
+  const phase =
+    t < 0.06
+      ? 'Оператор отклоняет джойстик отвала'
+      : t < 0.38
+        ? `Подъём: штоки цилиндров подъёма втягиваются, отвал поднимается до ≈${(d.bladeLift / 1000).toFixed(2).replace('.', ',')} м над грунтом`
+        : t < 0.62
+          ? `Опускание: штоки выдвигаются, кромка заглубляется (макс. ≈${d.bladeDrop} мм)`
+          : t < 0.72
+            ? 'Отвал возвращается на грунт'
+            : t < 0.84
+              ? 'Наклон отвала вперёд: шток цилиндра перекоса/наклона выдвигается (схематично)'
+              : 'Отвал возвращается в рабочее положение';
+  return {
+    ...base,
+    pose: { ...base.pose, bladeLift: lift, bladePitch: pitch },
+    rpm: moving ? 0.62 : 0.42,
+    smoke: moving ? 0.45 : 0.25,
+    hydBlade: moving,
+    phase,
+    highlight: ['pumps', 'bladeCylinders', 'blade'],
+    levers: { implement, travel: 0 },
+  };
 }
